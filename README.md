@@ -166,4 +166,4 @@ Before deploying to production:
 - [ ] Use HTTPS in front of the sidecar
 
 ## License
-https://github.com/dagbolade/AgentGov/blob/main/LICENSE
+[LICENSE](https://github.com/dagbolade/AgentGov/blob/main/LICENSE)
