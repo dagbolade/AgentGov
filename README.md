@@ -1,5 +1,9 @@
 # AI Governance Sidecar
 
+[![Test](https://github.com/dagbolade/ai-governance-sidecar/workflows/Test/badge.svg)](https://github.com/dagbolade/ai-governance-sidecar/actions)
+[![codecov](https://codecov.io/gh/dagbolade/ai-governance-sidecar/branch/main/graph/badge.svg)](https://codecov.io/gh/dagbolade/ai-governance-sidecar)
+
+
 A production-ready governance layer for AI agents that enforces policies, maintains audit trails, and enables human oversight—without modifying your AI agent code.
 
 ## What Does This Do?
