@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/dagbolade/ai-governance-sidecar/internal/approval"
 	"github.com/dagbolade/ai-governance-sidecar/internal/audit"
 	"github.com/dagbolade/ai-governance-sidecar/internal/policy"
 	"github.com/labstack/echo/v4"
@@ -17,14 +18,16 @@ type Handler struct {
 	config    ProxyConfig
 	policy    policy.Evaluator
 	audit     audit.Store
+	approval  approval.Queue
 	forwarder *Forwarder
 }
 
-func NewHandler(cfg ProxyConfig, pol policy.Evaluator, aud audit.Store) *Handler {
+func NewHandler(cfg ProxyConfig, pol policy.Evaluator, aud audit.Store, appr approval.Queue) *Handler {
 	return &Handler{
 		config:    cfg,
 		policy:    pol,
 		audit:     aud,
+		approval:  appr,
 		forwarder: NewForwarder(cfg.Timeout),
 	}
 }
@@ -51,7 +54,7 @@ func (h *Handler) HandleToolCall(c echo.Context) error {
 	}
 
 	if decision.HumanRequired {
-		return h.errorResponse(c, http.StatusNotImplemented, "human approval not yet implemented")
+		return h.handleHumanApproval(ctx, c, req, decision.Reason)
 	}
 
 	return h.forwardRequest(ctx, c, req)
@@ -93,6 +96,19 @@ func (h *Handler) logAudit(ctx context.Context, req *ToolCallRequest, decision p
 	}
 
 	return h.audit.Log(ctx, toolInput, auditDecision, decision.Reason)
+}
+
+func (h *Handler) handleHumanApproval(ctx context.Context, c echo.Context, req *ToolCallRequest, reason string) error {
+	decision, err := h.approval.Enqueue(ctx, req.ToPolicyRequest(), reason)
+	if err != nil {
+		return h.errorResponse(c, http.StatusInternalServerError, "approval queue error")
+	}
+
+	if !decision.Approved {
+		return h.denyResponse(c, decision.Reason)
+	}
+
+	return h.forwardRequest(ctx, c, req)
 }
 
 func (h *Handler) forwardRequest(ctx context.Context, c echo.Context, req *ToolCallRequest) error {

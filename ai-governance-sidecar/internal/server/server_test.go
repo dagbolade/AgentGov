@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/dagbolade/ai-governance-sidecar/internal/approval"
 	"github.com/dagbolade/ai-governance-sidecar/internal/audit"
 	"github.com/dagbolade/ai-governance-sidecar/internal/policy"
 	"github.com/dagbolade/ai-governance-sidecar/internal/proxy"
@@ -41,6 +42,22 @@ func (m *mockAuditStore) GetAll(ctx context.Context) ([]audit.Entry, error) {
 
 func (m *mockAuditStore) Close() error { return nil }
 
+type mockApprovalQueue struct{}
+
+func (m *mockApprovalQueue) Enqueue(ctx context.Context, req policy.Request, reason string) (approval.Decision, error) {
+	return approval.Decision{Approved: true, Reason: "mock approved"}, nil
+}
+
+func (m *mockApprovalQueue) GetPending(ctx context.Context) ([]approval.Request, error) {
+	return []approval.Request{}, nil
+}
+
+func (m *mockApprovalQueue) Decide(ctx context.Context, id string, decision approval.Decision) error {
+	return nil
+}
+
+func (m *mockApprovalQueue) Close() error { return nil }
+
 func TestHealthEndpoint(t *testing.T) {
 	cfg := Config{
 		Port:         8080,
@@ -54,8 +71,9 @@ func TestHealthEndpoint(t *testing.T) {
 
 	mockPolicy := &mockPolicyEvaluator{}
 	mockAudit := &mockAuditStore{}
+	mockApproval := &mockApprovalQueue{}
 
-	srv := New(cfg, mockPolicy, mockAudit)
+	srv := New(cfg, mockPolicy, mockAudit, mockApproval)
 
 	req := httptest.NewRequest(http.MethodGet, "/health", nil)
 	rec := httptest.NewRecorder()
@@ -97,8 +115,9 @@ func TestAuditEndpoint(t *testing.T) {
 			},
 		},
 	}
+	mockApproval := &mockApprovalQueue{}
 
-	srv := New(cfg, mockPolicy, mockAudit)
+	srv := New(cfg, mockPolicy, mockAudit, mockApproval)
 
 	req := httptest.NewRequest(http.MethodGet, "/audit", nil)
 	rec := httptest.NewRecorder()
@@ -132,8 +151,9 @@ func TestServerShutdown(t *testing.T) {
 
 	mockPolicy := &mockPolicyEvaluator{}
 	mockAudit := &mockAuditStore{}
+	mockApproval := &mockApprovalQueue{}
 
-	srv := New(cfg, mockPolicy, mockAudit)
+	srv := New(cfg, mockPolicy, mockAudit, mockApproval)
 
 	go func() {
 		srv.Start()

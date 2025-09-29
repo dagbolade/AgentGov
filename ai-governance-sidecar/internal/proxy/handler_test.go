@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/dagbolade/ai-governance-sidecar/internal/approval"
 	"github.com/dagbolade/ai-governance-sidecar/internal/audit"
 	"github.com/dagbolade/ai-governance-sidecar/internal/policy"
 	"github.com/labstack/echo/v4"
@@ -44,11 +45,28 @@ func (m *mockAuditStore) GetAll(ctx context.Context) ([]audit.Entry, error) {
 
 func (m *mockAuditStore) Close() error { return nil }
 
+type mockApprovalQueue struct{}
+
+func (m *mockApprovalQueue) Enqueue(ctx context.Context, req policy.Request, reason string) (approval.Decision, error) {
+	return approval.Decision{Approved: true, Reason: "mock approved"}, nil
+}
+
+func (m *mockApprovalQueue) GetPending(ctx context.Context) ([]approval.Request, error) {
+	return []approval.Request{}, nil
+}
+
+func (m *mockApprovalQueue) Decide(ctx context.Context, id string, decision approval.Decision) error {
+	return nil
+}
+
+func (m *mockApprovalQueue) Close() error { return nil }
+
 func TestHandleToolCall_Success(t *testing.T) {
 	mockPolicy := &mockPolicyEvaluator{
 		response: policy.Response{Allow: true, Reason: "approved"},
 	}
 	mockAudit := &mockAuditStore{}
+	mockApproval := &mockApprovalQueue{}
 
 	// Mock upstream server
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -62,7 +80,7 @@ func TestHandleToolCall_Success(t *testing.T) {
 		Timeout:         10,
 	}
 
-	handler := NewHandler(config, mockPolicy, mockAudit)
+	handler := NewHandler(config, mockPolicy, mockAudit, mockApproval)
 
 	e := echo.New()
 	reqBody := `{"tool_name":"test_tool","args":{"key":"value"}}`
@@ -99,13 +117,14 @@ func TestHandleToolCall_Denied(t *testing.T) {
 		response: policy.Response{Allow: false, Reason: "blocked by policy"},
 	}
 	mockAudit := &mockAuditStore{}
+	mockApproval := &mockApprovalQueue{}
 
 	config := ProxyConfig{
 		DefaultUpstream: "http://localhost:9000",
 		Timeout:         10,
 	}
 
-	handler := NewHandler(config, mockPolicy, mockAudit)
+	handler := NewHandler(config, mockPolicy, mockAudit, mockApproval)
 
 	e := echo.New()
 	reqBody := `{"tool_name":"blocked_tool","args":{}}`
@@ -137,9 +156,10 @@ func TestHandleToolCall_Denied(t *testing.T) {
 func TestHandleToolCall_InvalidRequest(t *testing.T) {
 	mockPolicy := &mockPolicyEvaluator{}
 	mockAudit := &mockAuditStore{}
+	mockApproval := &mockApprovalQueue{}
 
 	config := ProxyConfig{DefaultUpstream: "http://localhost:9000", Timeout: 10}
-	handler := NewHandler(config, mockPolicy, mockAudit)
+	handler := NewHandler(config, mockPolicy, mockAudit, mockApproval)
 
 	e := echo.New()
 	reqBody := `{"args":{}}`

@@ -4,9 +4,11 @@ import (
 	"context"
 	"os"
 	"os/signal"
+	"strconv"
 	"syscall"
 	"time"
 
+	"github.com/dagbolade/ai-governance-sidecar/internal/approval"
 	"github.com/dagbolade/ai-governance-sidecar/internal/audit"
 	"github.com/dagbolade/ai-governance-sidecar/internal/policy"
 	"github.com/dagbolade/ai-governance-sidecar/internal/server"
@@ -34,16 +36,31 @@ func run(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	defer closeResource("audit store", auditStore.Close)
+	defer func() {
+		if err := auditStore.Close(); err != nil {
+			log.Warn().Err(err).Msg("failed to close audit store")
+		}
+	}()
 
 	policyEngine, err := initPolicyEngine()
 	if err != nil {
 		return err
 	}
-	defer closeResource("policy engine", policyEngine.Close)
+	defer func() {
+		if err := policyEngine.Close(); err != nil {
+			log.Warn().Err(err).Msg("failed to close policy engine")
+		}
+	}()
+
+	approvalQueue := initApprovalQueue()
+	defer func() {
+		if err := approvalQueue.Close(); err != nil {
+			log.Warn().Err(err).Msg("failed to close approval queue")
+		}
+	}()
 
 	cfg := server.LoadConfig()
-	srv := server.New(cfg, policyEngine, auditStore)
+	srv := server.New(cfg, policyEngine, auditStore, approvalQueue)
 
 	return runServer(ctx, srv)
 }
@@ -102,6 +119,18 @@ func initPolicyEngine() (policy.Evaluator, error) {
 	return engine, nil
 }
 
+func initApprovalQueue() approval.Queue {
+	timeoutSec := getEnvInt("APPROVAL_TIMEOUT", 300)
+	timeout := time.Duration(timeoutSec) * time.Second
+	
+	log.Info().Dur("timeout", timeout).Msg("initializing approval queue")
+	
+	queue := approval.NewInMemoryQueue(timeout)
+	
+	log.Info().Msg("approval queue initialized")
+	return queue
+}
+
 func runServer(ctx context.Context, srv *server.Server) error {
 	errChan := make(chan error, 1)
 
@@ -119,15 +148,18 @@ func runServer(ctx context.Context, srv *server.Server) error {
 	}
 }
 
-func closeResource(name string, closeFn func() error) {
-	if err := closeFn(); err != nil {
-		log.Warn().Err(err).Str("resource", name).Msg("failed to close resource")
-	}
-}
-
 func getEnv(key, fallback string) string {
 	if value := os.Getenv(key); value != "" {
 		return value
+	}
+	return fallback
+}
+
+func getEnvInt(key string, fallback int) int {
+	if value := os.Getenv(key); value != "" {
+		if intVal, err := strconv.Atoi(value); err == nil {
+			return intVal
+		}
 	}
 	return fallback
 }

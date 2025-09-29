@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/dagbolade/ai-governance-sidecar/internal/approval"
 	"github.com/dagbolade/ai-governance-sidecar/internal/audit"
 	"github.com/dagbolade/ai-governance-sidecar/internal/policy"
 	"github.com/dagbolade/ai-governance-sidecar/internal/proxy"
@@ -27,7 +28,7 @@ type Config struct {
 	ProxyConfig     proxy.ProxyConfig
 }
 
-func New(cfg Config, pol policy.Evaluator, aud audit.Store) *Server {
+func New(cfg Config, pol policy.Evaluator, aud audit.Store, appr approval.Queue) *Server {
 	e := echo.New()
 	e.HideBanner = true
 	e.HidePort = true
@@ -38,7 +39,7 @@ func New(cfg Config, pol policy.Evaluator, aud audit.Store) *Server {
 	}
 
 	s.setupMiddleware()
-	s.setupRoutes(pol, aud)
+	s.setupRoutes(pol, aud, appr)
 
 	return s
 }
@@ -72,9 +73,9 @@ func (s *Server) Shutdown(ctx context.Context) error {
 
 func (s *Server) setupMiddleware() {
 	s.echo.Use(middleware.RequestLoggerWithConfig(middleware.RequestLoggerConfig{
-		LogURI:    true,
-		LogStatus: true,
-		LogMethod: true,
+		LogURI:     true,
+		LogStatus:  true,
+		LogMethod:  true,
 		LogLatency: true,
 		LogValuesFunc: func(c echo.Context, v middleware.RequestLoggerValues) error {
 			log.Info().
@@ -95,25 +96,56 @@ func (s *Server) setupMiddleware() {
 	}))
 }
 
-func (s *Server) setupRoutes(pol policy.Evaluator, aud audit.Store) {
-	proxyHandler := proxy.NewHandler(s.config.ProxyConfig, pol, aud)
+func (s *Server) setupRoutes(pol policy.Evaluator, aud audit.Store, appr approval.Queue) {
+	proxyHandler := proxy.NewHandler(s.config.ProxyConfig, pol, aud, appr)
 	auditHandler := NewAuditHandler(aud)
+	approvalHandler := NewApprovalHandler(appr)
+	wsHandler := NewWSHandler(appr)
 
+	// Core endpoints
 	s.echo.GET("/health", s.handleHealth)
 	s.echo.POST("/tool/call", proxyHandler.HandleToolCall)
 	s.echo.GET("/audit", auditHandler.GetAuditLog)
 
-	// TODO: Approval routes will be added in Phase 2
-	// s.echo.GET("/pending", approvalHandler.GetPending)
-	// s.echo.POST("/approve/:id", approvalHandler.Approve)
+	// Approval endpoints
+	s.echo.GET("/pending", approvalHandler.GetPending)
+	s.echo.POST("/approve/:id", approvalHandler.Decide)
 
-	// TODO: UI routes will be added in Phase 2
-	// s.echo.GET("/ui", uiHandler.Serve)
-	// s.echo.GET("/ui/*", uiHandler.ServeStatic)
+	// WebSocket for real-time updates
+	s.echo.GET("/ws", wsHandler.HandleWebSocket)
+
+	// UI routes (Phase 2 - will add static files)
+	s.echo.GET("/ui", s.handleUI)
+	s.echo.GET("/ui/*", s.handleUI)
 }
 
 func (s *Server) handleHealth(c echo.Context) error {
 	return c.JSON(http.StatusOK, map[string]string{
 		"status": "healthy",
 	})
+}
+
+func (s *Server) handleUI(c echo.Context) error {
+	// TODO: Serve embedded React UI
+	return c.HTML(http.StatusOK, `
+		<!DOCTYPE html>
+		<html>
+		<head>
+			<title>AI Governance Sidecar</title>
+			<meta charset="UTF-8">
+			<meta name="viewport" content="width=device-width, initial-scale=1.0">
+		</head>
+		<body>
+			<div id="root">
+				<h1>AI Governance Sidecar</h1>
+				<p>UI is being built. For now, use the API endpoints:</p>
+				<ul>
+					<li>GET /pending - View pending approvals</li>
+					<li>POST /approve/:id - Approve/deny requests</li>
+					<li>GET /audit - View audit log</li>
+				</ul>
+			</div>
+		</body>
+		</html>
+	`)
 }
