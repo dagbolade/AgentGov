@@ -1,0 +1,33 @@
+version: '3.8'
+
+services:
+  governance-sidecar:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ai-governance-sidecar
+    ports:
+      - "8080:8080"  # HTTP API
+      - "8081:8081"  # gRPC (optional)
+    volumes:
+      - ./policies:/app/policies:ro  # Read-only policy directory
+      - ./db:/app/db                  # Persistent audit database
+    environment:
+      - TOOL_UPSTREAM=${TOOL_UPSTREAM:-http://host.docker.internal:9000}
+      - ENABLE_GRPC=${ENABLE_GRPC:-false}
+      - POLICY_DIR=/app/policies
+      - DB_PATH=/app/db/audit.db
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+    networks:
+      - sidecar-net
+
+networks:
+  sidecar-net:
+    driver: bridge
