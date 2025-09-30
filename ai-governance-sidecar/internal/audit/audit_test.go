@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"sync"
 )
 
 func TestSQLiteStore(t *testing.T) {
