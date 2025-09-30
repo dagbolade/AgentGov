@@ -115,35 +115,22 @@ func TestConcurrentWrites(t *testing.T) {
 	defer store.Close()
 
 	ctx := context.Background()
-	toolInput := json.RawMessage(`{"tool":"concurrent"}`)
+	var wg sync.WaitGroup
+	numWrites := 20
 
-	const numWrites = 20
-	errChan := make(chan error, numWrites)
-	doneChan := make(chan struct{})
-
-	// Stagger writes slightly to reduce lock contention
 	for i := 0; i < numWrites; i++ {
-		go func(id int) {
-			time.Sleep(time.Duration(id) * time.Millisecond)
-			errChan <- store.Log(ctx, toolInput, DecisionAllow, "concurrent test")
+		wg.Add(1)
+		go func(idx int) {
+			defer wg.Done()
+			toolInput := json.RawMessage(fmt.Sprintf(`{"tool":"concurrent","id":%d}`, idx))
+			if err := store.Log(ctx, toolInput, DecisionAllow, "concurrent"); err != nil {
+				t.Errorf("write %d failed: %v", idx, err)
+			}
 		}(i)
 	}
 
-	go func() {
-		for i := 0; i < numWrites; i++ {
-			<-errChan
-		}
-		close(doneChan)
-	}()
+	wg.Wait() // wait for all goroutines to finish
 
-	select {
-	case <-doneChan:
-		// All writes completed
-	case <-time.After(10 * time.Second):
-		t.Fatal("timeout waiting for concurrent writes")
-	}
-
-	// Verify all writes succeeded
 	entries, err := store.GetAll(ctx)
 	if err != nil {
 		t.Fatalf("failed to get entries: %v", err)
