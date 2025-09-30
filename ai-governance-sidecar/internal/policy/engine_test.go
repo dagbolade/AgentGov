@@ -48,7 +48,7 @@ func TestEngineEvaluation(t *testing.T) {
 
 func TestEngineReload(t *testing.T) {
 	policyDir := t.TempDir()
-	
+
 	engine := &Engine{
 		evaluators: make(map[string]*WASMEvaluator),
 		loader:     NewWASMLoader(),
