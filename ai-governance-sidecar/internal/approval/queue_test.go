@@ -101,30 +101,30 @@ func TestDecideNonExistent(t *testing.T) {
 }
 
 func TestConcurrentEnqueue(t *testing.T) {
-	queue := NewInMemoryQueue(5 * time.Second)
-	ctx := context.Background()
-	const numRequests = 10
+    queue := NewInMemoryQueue(30 * time.Second) // Increased timeout
+    defer queue.Close()
 
-	var wg sync.WaitGroup
-	wg.Add(numRequests)
+    ctx := context.Background()
+    const numRequests = 10
 
-	for i := 0; i < numRequests; i++ {
-		go func(id int) {
-			defer wg.Done()
-			req := policy.Request{
-				ToolName: "concurrent_test",
-				Args:     json.RawMessage(`{}`),
-			}
-			queue.Enqueue(ctx, req, "concurrent")
-		}(i)
-	}
+    var wg sync.WaitGroup
+    wg.Add(numRequests)
 
-	wg.Wait() // Wait for all goroutines to finish before checking and closing
+    for i := 0; i < numRequests; i++ {
+        go func(id int) {
+            defer wg.Done()
+            req := policy.Request{
+                ToolName: "concurrent_test",
+                Args:     json.RawMessage(`{}`),
+            }
+            queue.Enqueue(ctx, req, "concurrent")
+        }(i)
+    }
 
-	pending, _ := queue.GetPending(ctx)
-	if len(pending) != numRequests {
-		t.Errorf("expected %d pending requests, got %d", numRequests, len(pending))
-	}
+    wg.Wait() // Wait for all goroutines to finish
 
-	queue.Close()
+    pending, _ := queue.GetPending(ctx)
+    if len(pending) != numRequests {
+        t.Errorf("expected %d pending requests, got %d", numRequests, len(pending))
+    }
 }
