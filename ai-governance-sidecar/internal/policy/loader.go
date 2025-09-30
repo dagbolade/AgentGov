@@ -52,6 +52,7 @@ func (l *WASMLoader) LoadFromDir(dir string) (map[string]*WASMEvaluator, error) 
 
 	if len(evaluators) == 0 {
 		log.Warn().Str("dir", dir).Msg("no valid WASM policies found - all requests will be denied")
+		return nil, fmt.Errorf("no WASM policies found in %s", dir)
 	}
 
 	return evaluators, nil
