@@ -1,12 +1,13 @@
 package main
 
+
 import (
-	"context"
-	"os"
-	"os/signal"
-	"strconv"
-	"syscall"
-	"time"
+    "context"
+    "os"
+    "os/signal"
+    "strconv"
+    "syscall"
+    "time"
 
 	"github.com/dagbolade/ai-governance-sidecar/internal/approval"
 	"github.com/dagbolade/ai-governance-sidecar/internal/audit"
@@ -15,6 +16,8 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 )
+
+
 
 func main() {
 	setupLogger()
@@ -60,7 +63,7 @@ func run(ctx context.Context) error {
 	}()
 
 	cfg := server.LoadConfig()
-	srv := server.New(cfg, policyEngine, auditStore, approvalQueue)
+	srv := server.New(cfg, policyEngine, auditStore, approvalQueue, server.UIAssets)
 
 	return runServer(ctx, srv)
 }

@@ -1,0 +1,10 @@
+.audit-log { background: #fff; border-radius: 8px; box-shadow: 0 2px 8px #0001; padding: 1rem; flex: 1 1 500px; min-width: 350px; overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; }
+th, td { padding: 0.5rem; border-bottom: 1px solid #eee; text-align: left; font-size: 0.9rem; }
+th { background: #f0f0f0; font-weight: 600; }
+.status-approved { color: #4caf50; font-weight: 600; }
+.status-denied { color: #f44336; font-weight: 600; }
+.status-pending { color: #ff9800; font-weight: 600; }
+.risk-high { color: #f44336; font-weight: 600; }
+.risk-medium { color: #ff9800; font-weight: 600; }
+.risk-low { color: #4caf50; font-weight: 600; }

@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"embed"
 	"fmt"
 	"net/http"
 	"time"
@@ -28,7 +29,7 @@ type Config struct {
 	ProxyConfig     proxy.ProxyConfig
 }
 
-func New(cfg Config, pol policy.Evaluator, aud audit.Store, appr approval.Queue) *Server {
+func New(cfg Config, pol policy.Evaluator, aud audit.Store, appr approval.Queue, assets embed.FS) *Server {
 	e := echo.New()
 	e.HideBanner = true
 	e.HidePort = true
@@ -39,7 +40,7 @@ func New(cfg Config, pol policy.Evaluator, aud audit.Store, appr approval.Queue)
 	}
 
 	s.setupMiddleware()
-	s.setupRoutes(pol, aud, appr)
+	s.setupRoutes(pol, aud, appr, assets)
 
 	return s
 }
@@ -96,11 +97,12 @@ func (s *Server) setupMiddleware() {
 	}))
 }
 
-func (s *Server) setupRoutes(pol policy.Evaluator, aud audit.Store, appr approval.Queue) {
+func (s *Server) setupRoutes(pol policy.Evaluator, aud audit.Store, appr approval.Queue, assets embed.FS) {
 	proxyHandler := proxy.NewHandler(s.config.ProxyConfig, pol, aud, appr)
 	auditHandler := NewAuditHandler(aud)
 	approvalHandler := NewApprovalHandler(appr)
 	wsHandler := NewWSHandler(appr)
+	uiHandler := NewUIHandler(assets)
 
 	// Core endpoints
 	s.echo.GET("/health", s.handleHealth)
@@ -114,9 +116,13 @@ func (s *Server) setupRoutes(pol policy.Evaluator, aud audit.Store, appr approva
 	// WebSocket for real-time updates
 	s.echo.GET("/ws", wsHandler.HandleWebSocket)
 
-	// UI routes (Phase 2 - will add static files)
-	s.echo.GET("/ui", s.handleUI)
-	s.echo.GET("/ui/*", s.handleUI)
+	// Serve static assets for UI
+	s.echo.GET("/ui/assets/*", uiHandler.ServeAsset)
+
+	// UI routes - serve React SPA
+	s.echo.GET("/", uiHandler.ServeUI)
+	s.echo.GET("/ui", uiHandler.ServeUI)
+	s.echo.GET("/ui/*", uiHandler.ServeUI)
 }
 
 func (s *Server) handleHealth(c echo.Context) error {
@@ -125,27 +131,3 @@ func (s *Server) handleHealth(c echo.Context) error {
 	})
 }
 
-func (s *Server) handleUI(c echo.Context) error {
-	// TODO: Serve embedded React UI
-	return c.HTML(http.StatusOK, `
-		<!DOCTYPE html>
-		<html>
-		<head>
-			<title>AI Governance Sidecar</title>
-			<meta charset="UTF-8">
-			<meta name="viewport" content="width=device-width, initial-scale=1.0">
-		</head>
-		<body>
-			<div id="root">
-				<h1>AI Governance Sidecar</h1>
-				<p>UI is being built. For now, use the API endpoints:</p>
-				<ul>
-					<li>GET /pending - View pending approvals</li>
-					<li>POST /approve/:id - Approve/deny requests</li>
-					<li>GET /audit - View audit log</li>
-				</ul>
-			</div>
-		</body>
-		</html>
-	`)
-}

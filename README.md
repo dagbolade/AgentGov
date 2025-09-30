@@ -3,86 +3,253 @@
 [![Test](https://github.com/dagbolade/ai-governance-sidecar/workflows/Test/badge.svg)](https://github.com/dagbolade/ai-governance-sidecar/actions)
 [![codecov](https://codecov.io/gh/dagbolade/ai-governance-sidecar/branch/main/graph/badge.svg)](https://codecov.io/gh/dagbolade/ai-governance-sidecar)
 
-A production-ready governance layer for AI agents that enforces policies, maintains audit trails, and enables human oversight—without modifying your AI agent code.
+A powerful AI governance system that provides real-time policy enforcement, approval workflows, and audit logging for AI tool calls. Features a modern React dashboard with WebSocket-based real-time updates and OPA (Open Policy Agent) integration.
 
-## What Does This Do?
+## 🚀 Features
 
-This service sits between your AI agent and the tools it calls, acting as a security checkpoint:
+- **Policy Enforcement**: Uses Open Policy Agent (OPA) for flexible, declarative policy management
+- **Real-Time Dashboard**: React-based UI with live updates via WebSockets
+- **Approval Workflows**: Human-in-the-loop approval system for sensitive AI operations
+- **Audit Logging**: Complete audit trail of all AI tool calls and decisions
+- **Embedded UI**: Single binary deployment with embedded web assets
 
-1. **Policy Enforcement**: Automatically allows or blocks tool calls based on your rules
-2. **Audit Trail**: Records every decision in an immutable database
-3. **Human Approval**: Optionally requires human review for sensitive operations
+## 📁 Project Structure
 
-## Quick Start (3 Steps)
+```
+ai-governance-sidecar/
+├── cmd/sidecar/           # Main application entry point
+├── internal/
+│   ├── approval/          # Approval queue and workflow management
+│   ├── audit/            # Audit logging and storage
+│   ├── policy/           # OPA policy engine integration
+│   ├── proxy/            # HTTP proxy for tool calls
+│   └── server/           # HTTP server and API endpoints
+│       └── web/          # React dashboard source code
+├── policies/             # OPA policy files (.rego)
+├── db/                  # SQLite database storage
+└── web/                 # Built React assets (generated)
+```
 
-### Step 1: Install Docker
+## 🛠️ Quick Start
 
-If you don't have Docker installed:
-- **Mac**: Download [Docker Desktop for Mac](https://www.docker.com/products/docker-desktop)
-- **Windows**: Download [Docker Desktop for Windows](https://www.docker.com/products/docker-desktop)
-- **Linux**: Follow [Docker installation guide](https://docs.docker.com/engine/install/)
+### Prerequisites
 
-### Step 2: Start the Service
+- Go 1.21 or higher
+- Node.js 18+ (for UI development)
 
-Open your terminal and run:
+### 1. Build the Application
 
 ```bash
-docker-compose up -d
+cd ai-governance-sidecar
+go build -o sidecar ./cmd/sidecar
 ```
 
-That's it! The service is now running.
-
-### Step 3: Verify It's Working
+### 2. Run the Server
 
 ```bash
-curl http://localhost:8080/health
+./sidecar
 ```
 
-You should see: `{"status":"healthy"}`
-
-## How to Use It
-
-### Point Your AI Agent to the Sidecar
-
-Instead of calling tools directly, your AI agent sends requests to:
+The server will start on `http://localhost:8080` and show:
 ```
-http://localhost:8080/tool/call
+2025-09-30T15:45:16Z INF starting AI Governance Sidecar
+2025-09-30T15:45:16Z INF policy loaded policy=allow_all
+2025-09-30T15:45:16Z INF starting HTTP server port=8080
 ```
 
-**Example Request:**
+### 3. Access the Dashboard
+
+Open `http://localhost:8080` in your browser to access the governance dashboard.
+
+## 🔧 Configuration
+
+### Policy Management
+
+Policies are written in Rego (OPA's policy language) and stored in the `policies/` directory:
+
+**Example Policy** (`policies/allow_all.rego`):
+```rego
+package policy
+
+default allow = true
+```
+
+**Restrictive Policy Example**:
+```rego
+package policy
+
+default allow = false
+
+# Allow specific tools only
+allow {
+    input.tool_name == "safe_tool"
+}
+
+# Require human approval for sensitive operations
+allow {
+    input.tool_name == "sensitive_tool"
+    input.metadata.approved_by
+}
+```
+
+### Environment Variables
+
+- `PORT`: HTTP server port (default: 8080)
+- `DB_PATH`: SQLite database path (default: ./db/audit.db)
+- `POLICY_DIR`: Policy directory path (default: ./policies)
+- `APPROVAL_TIMEOUT`: Approval timeout in seconds (default: 300)
+
+## 📡 API Endpoints
+
+### Tool Call Proxy
 ```bash
-curl -X POST http://localhost:8080/tool/call \
+POST /tools
+Content-Type: application/json
+
+{
+  "tool_name": "example_tool",
+  "args": {"param": "value"},
+  "upstream": "http://api.example.com/endpoint"
+}
+```
+
+### Approval Management
+```bash
+# Get pending approvals
+GET /pending
+
+# Approve/deny a request
+POST /approval/{id}
+{
+  "approved": true,
+  "reason": "Looks safe to proceed"
+}
+```
+
+### Audit Logs
+```bash
+# Get audit history
+GET /audit?limit=100&offset=0
+```
+
+### WebSocket Updates
+```bash
+# Real-time updates
+GET /ws
+```
+
+## 🧪 Testing the System
+
+### 1. Test Policy Evaluation
+```bash
+curl -X POST http://localhost:8080/tools \
   -H "Content-Type: application/json" \
   -d '{
-    "tool_name": "send_email",
-    "args": {
-      "to": "user@example.com",
-      "subject": "Hello",
-      "body": "Test message"
-    }
+    "tool_name": "test_tool",
+    "args": {"param": "value"},
+    "upstream": "http://httpbin.org/post"
   }'
 ```
 
-### View Audit Log
-
-See all decisions made:
+### 2. Check Audit Logs
 ```bash
 curl http://localhost:8080/audit
 ```
 
-## Configuration
+### 3. Monitor Real-Time Updates
+Open the dashboard at `http://localhost:8080` and watch for live updates as requests are processed.
 
-Edit the `.env` file to customize:
+## 🏗️ Development
+
+### UI Development
+
+The React dashboard is located in `internal/server/web/`:
 
 ```bash
-# Where tool calls are forwarded to
-TOOL_UPSTREAM=http://your-tool-service:9000
+cd internal/server/web
+npm install
+npm run dev    # Development server
+npm run build  # Production build
+```
 
-# Logging level (debug, info, warn, error)
-LOG_LEVEL=info
+### Running Tests
 
-# Database location
-DB_PATH=/app/db/audit.db
+```bash
+go test ./... -v
+```
+
+### Building from Source
+
+```bash
+# Build UI assets
+cd internal/server/web && npm run build
+
+# Build Go binary
+go build -o sidecar ./cmd/sidecar
+```
+
+## 🔍 Key Components
+
+### Policy Engine (`internal/policy/`)
+- **OPA Integration**: Uses the official OPA Go SDK for policy evaluation
+- **File Watching**: Automatically reloads policies when changed
+- **Flexible Evaluation**: Supports complex policy rules and conditions
+
+### Approval System (`internal/approval/`)
+- **Queue Management**: Thread-safe approval queue with timeouts
+- **Real-Time Updates**: WebSocket notifications for approval status changes
+- **Audit Integration**: All approval decisions are logged
+
+### Dashboard (`internal/server/web/`)
+- **React + Vite**: Modern, fast UI development stack
+- **Real-Time Updates**: WebSocket integration for live data
+- **Responsive Design**: Works on desktop and mobile devices
+
+## 🚨 Security Considerations
+
+- All tool calls are evaluated against OPA policies before execution
+- Audit logs are immutable and stored in SQLite with transaction safety
+- WebSocket connections are authenticated and rate-limited
+- Sensitive operations can require human approval via policy configuration
+
+## 📊 Monitoring
+
+The system provides comprehensive logging:
+- Policy evaluation results
+- Approval workflow status
+- HTTP request/response details
+- WebSocket connection events
+- Database operations
+
+## 🤝 Contributing
+
+1. Fork the repository
+2. Create a feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
+
+## 🆘 Troubleshooting
+
+### Server Won't Start
+- Check if port 8080 is available
+- Verify Go version (1.21+)
+- Ensure `policies/` directory exists with at least one `.rego` file
+
+### UI Not Loading
+- Verify web assets are built: `ls web/dist/`
+- Check browser console for errors
+- Ensure server is running on correct port
+
+### Policy Not Loading
+- Check `.rego` file syntax
+- Verify policy package name is `policy`
+- Check server logs for policy evaluation errors
+
+### Database Issues
+- Ensure `db/` directory exists and is writable
+- Check SQLite database permissions
+- Review audit store initialization logs
 
 # Policy directory
 POLICY_DIR=/app/policies
