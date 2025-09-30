@@ -3,65 +3,69 @@ package policy
 import (
 	"context"
 	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
 	"sync"
 
 	"github.com/rs/zerolog/log"
 )
 
 type Engine struct {
-	mu         sync.RWMutex
-	loader     *WASMLoader
-	watcher    *FileWatcher
-	evaluators map[string]*WASMEvaluator
+       mu         sync.RWMutex
+       loader     *OPALoader
+       watcher    *FileWatcher
+       evaluators map[string]*OPAEvaluator
 }
 
 func NewEngine(policyDir string) (*Engine, error) {
-	loader := NewWASMLoader()
-	
-	engine := &Engine{
-		loader:     loader,
-		evaluators: make(map[string]*WASMEvaluator),
-	}
+       loader := NewOPALoader()
 
-	if err := engine.loadPolicies(policyDir); err != nil {
-		return nil, fmt.Errorf("initial load: %w", err)
-	}
+       engine := &Engine{
+	       loader:     loader,
+	       evaluators: make(map[string]*OPAEvaluator),
+       }
 
-	watcher, err := NewFileWatcher(policyDir, engine.handlePolicyChange)
-	if err != nil {
-		return nil, fmt.Errorf("create watcher: %w", err)
-	}
-	engine.watcher = watcher
+       if err := engine.loadPolicies(policyDir); err != nil {
+	       return nil, fmt.Errorf("initial load: %w", err)
+       }
 
-	return engine, nil
+       watcher, err := NewFileWatcher(policyDir, engine.handlePolicyChange)
+       if err != nil {
+	       return nil, fmt.Errorf("create watcher: %w", err)
+       }
+       engine.watcher = watcher
+
+       return engine, nil
 }
 
 func (e *Engine) Evaluate(ctx context.Context, req Request) (Response, error) {
-	e.mu.RLock()
-	defer e.mu.RUnlock()
+       e.mu.RLock()
+       defer e.mu.RUnlock()
 
-	if len(e.evaluators) == 0 {
-		return e.denyResponse("no policies loaded"), nil
-	}
+       if len(e.evaluators) == 0 {
+	       return e.denyResponse("no policies loaded"), nil
+       }
 
-	// Evaluate all policies; deny if any denies
-	for name, eval := range e.evaluators {
-		resp, err := eval.Evaluate(ctx, req)
-		if err != nil {
-			log.Warn().Err(err).Str("policy", name).Msg("policy evaluation failed")
-			return e.denyResponse(fmt.Sprintf("policy error: %s", name)), nil
-		}
+       // Evaluate all policies; deny if any denies
+       for name, eval := range e.evaluators {
+	       // Convert Request to map[string]interface{} for OPA
+	       input := map[string]interface{}{
+		       "tool_name": req.ToolName,
+		       "args":      req.Args,
+		       "metadata":  req.Metadata,
+	       }
+	       allowed, err := eval.Eval(ctx, input)
+	       if err != nil {
+		       log.Warn().Err(err).Str("policy", name).Msg("policy evaluation failed")
+		       return e.denyResponse(fmt.Sprintf("policy error: %s", name)), nil
+	       }
+	       if !allowed {
+		       return Response{Allow: false, Reason: "denied by policy: " + name}, nil
+	       }
+       }
 
-		if !resp.Allow {
-			return resp, nil
-		}
-
-		if resp.HumanRequired {
-			return resp, nil
-		}
-	}
-
-	return Response{Allow: true, Reason: "all policies passed"}, nil
+       return Response{Allow: true, Reason: "all policies passed"}, nil
 }
 
 func (e *Engine) Reload() error {
@@ -91,38 +95,34 @@ func (e *Engine) Close() error {
 }
 
 func (e *Engine) loadPolicies(dir string) error {
-	policies, err := e.loader.LoadFromDir(dir)
-	if err != nil {
-		return err
-	}
+       entries, err := os.ReadDir(dir)
+       if err != nil {
+	       return err
+       }
 
-	for name, eval := range policies {
-		e.evaluators[name] = eval
-		log.Info().Str("policy", name).Msg("policy loaded")
-	}
-
-	return nil
+       for _, entry := range entries {
+	       if entry.IsDir() || !strings.HasSuffix(strings.ToLower(entry.Name()), ".rego") {
+		       continue
+	       }
+	       path := filepath.Join(dir, entry.Name())
+	       eval, err := e.loader.LoadFromFile(path)
+	       if err != nil {
+		       log.Warn().Err(err).Str("file", entry.Name()).Msg("failed to load policy")
+		       continue
+	       }
+	       name := strings.TrimSuffix(entry.Name(), filepath.Ext(entry.Name()))
+	       e.evaluators[name] = eval
+	       log.Info().Str("policy", name).Msg("policy loaded")
+       }
+       if len(e.evaluators) == 0 {
+	       log.Warn().Str("dir", dir).Msg("no valid OPA policies found - all requests will be denied")
+       }
+       return nil
 }
 
 func (e *Engine) reloadLocked() error {
-	// Close existing evaluators
-	for _, eval := range e.evaluators {
-		eval.Close()
-	}
-	e.evaluators = make(map[string]*WASMEvaluator)
-
-	// Reload from directory
-	policies, err := e.loader.LoadFromDir(e.watcher.dir)
-	if err != nil {
-		return err
-	}
-
-	for name, eval := range policies {
-		e.evaluators[name] = eval
-	}
-
-	log.Info().Int("count", len(policies)).Msg("policies reloaded")
-	return nil
+       e.evaluators = make(map[string]*OPAEvaluator)
+       return e.loadPolicies(e.watcher.dir)
 }
 
 func (e *Engine) handlePolicyChange(path string) {

@@ -1,0 +1,12 @@
+.pending-approvals { background: #fff; border-radius: 8px; box-shadow: 0 2px 8px #0001; padding: 1rem; flex: 1 1 350px; min-width: 300px; }
+.approval-item { display: flex; flex-direction: column; gap: 0.5rem; margin-bottom: 1rem; border-bottom: 1px solid #eee; padding-bottom: 1rem; }
+.approval-info p { margin: 0.25rem 0; color: #666; font-size: 0.9rem; }
+.approval-actions { display: flex; flex-direction: column; gap: 0.5rem; }
+.buttons { display: flex; gap: 0.5rem; }
+.approve { background: #4caf50; color: #fff; border: none; padding: 0.5rem 1rem; border-radius: 4px; cursor: pointer; flex: 1; }
+.approve:hover:not(:disabled) { background: #45a049; }
+.approve:disabled { background: #ccc; cursor: not-allowed; }
+.deny { background: #f44336; color: #fff; border: none; padding: 0.5rem 1rem; border-radius: 4px; cursor: pointer; flex: 1; }
+.deny:hover:not(:disabled) { background: #da190b; }
+.deny:disabled { background: #ccc; cursor: not-allowed; }
+input[type="text"] { padding: 0.4rem; border-radius: 4px; border: 1px solid #ccc; width: 100%; box-sizing: border-box; }
