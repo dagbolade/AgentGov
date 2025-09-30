@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"testing"
 	"time"
+	"sync"
 
 	"github.com/dagbolade/ai-governance-sidecar/internal/policy"
 )
@@ -101,13 +102,15 @@ func TestDecideNonExistent(t *testing.T) {
 
 func TestConcurrentEnqueue(t *testing.T) {
 	queue := NewInMemoryQueue(5 * time.Second)
-	defer queue.Close()
-
 	ctx := context.Background()
 	const numRequests = 10
 
+	var wg sync.WaitGroup
+	wg.Add(numRequests)
+
 	for i := 0; i < numRequests; i++ {
 		go func(id int) {
+			defer wg.Done()
 			req := policy.Request{
 				ToolName: "concurrent_test",
 				Args:     json.RawMessage(`{}`),
@@ -116,10 +119,12 @@ func TestConcurrentEnqueue(t *testing.T) {
 		}(i)
 	}
 
-	time.Sleep(100 * time.Millisecond)
+	wg.Wait() // Wait for all goroutines to finish before checking and closing
 
 	pending, _ := queue.GetPending(ctx)
 	if len(pending) != numRequests {
 		t.Errorf("expected %d pending requests, got %d", numRequests, len(pending))
 	}
+
+	queue.Close()
 }
