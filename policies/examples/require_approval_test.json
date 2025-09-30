@@ -1,0 +1,27 @@
+[
+  {
+    "note": "Test case 1: Non-sensitive operation should be allowed",
+    "input": {"sensitive": false},
+    "expected_result": true
+  },
+  {
+    "note": "Test case 2: Non-sensitive with approval should be allowed",
+    "input": {"sensitive": false, "approved": true},
+    "expected_result": true
+  },
+  {
+    "note": "Test case 3: Sensitive with approval should be allowed",
+    "input": {"sensitive": true, "approved": true},
+    "expected_result": true
+  },
+  {
+    "note": "Test case 4: Sensitive without approval should be denied",
+    "input": {"sensitive": true, "approved": false},
+    "expected_result": false
+  },
+  {
+    "note": "Test case 5: Sensitive with no approval field should be denied",
+    "input": {"sensitive": true},
+    "expected_result": false
+  }
+]

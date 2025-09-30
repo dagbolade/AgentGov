@@ -1,0 +1,12 @@
+[
+  {
+    "note": "Test case 1: Any input should be allowed",
+    "input": {},
+    "expected_result": true
+  },
+  {
+    "note": "Test case 2: Input with data should still be allowed",
+    "input": {"user": "test", "action": "delete"},
+    "expected_result": true
+  }
+]
