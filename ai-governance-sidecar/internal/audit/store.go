@@ -5,6 +5,8 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"strings"
+	"time"
 
 	_ "modernc.org/sqlite"
 )
@@ -61,11 +63,28 @@ func (s *SQLiteStore) initializeSchema() error {
 }
 
 func (s *SQLiteStore) insertEntry(ctx context.Context, toolInput json.RawMessage, decision Decision, reason string) error {
-	_, err := s.db.ExecContext(ctx, queryInsertEntry, string(toolInput), string(decision), reason)
-	if err != nil {
+	const maxRetries = 3
+	var err error
+	
+	for attempt := 0; attempt < maxRetries; attempt++ {
+		_, err = s.db.ExecContext(ctx, queryInsertEntry, string(toolInput), string(decision), reason)
+		if err == nil {
+			return nil
+		}
+		
+		// Check if it's a lock error
+		if strings.Contains(err.Error(), "database is locked") || strings.Contains(err.Error(), "SQLITE_BUSY") {
+			// Exponential backoff
+			backoff := time.Duration(attempt+1) * 10 * time.Millisecond
+			time.Sleep(backoff)
+			continue
+		}
+		
+		// Non-lock error, fail immediately
 		return fmt.Errorf("insert entry: %w", err)
 	}
-	return nil
+	
+	return fmt.Errorf("insert entry after %d retries: %w", maxRetries, err)
 }
 
 func (s *SQLiteStore) queryAllEntries(ctx context.Context) (*sql.Rows, error) {
