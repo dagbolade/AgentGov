@@ -17,6 +17,12 @@ func openDatabase(dbPath string) (*sql.DB, error) {
 		return nil, fmt.Errorf("open database: %w", err)
 	}
 
+	// Set connection pool limits for concurrent access
+	db.SetMaxOpenConns(25)
+	db.SetMaxIdleConns(5)
+	db.SetConnMaxLifetime(0)
+
+
 	if err := db.Ping(); err != nil {
 		db.Close()
 		return nil, fmt.Errorf("ping database: %w", err)
