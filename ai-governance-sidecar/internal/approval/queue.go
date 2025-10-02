@@ -16,6 +16,7 @@ type InMemoryQueue struct {
 	pending  map[string]*Request
 	timeout  time.Duration
 	notifyCh chan struct{}
+	closed   bool
 }
 
 func NewInMemoryQueue(timeout time.Duration) *InMemoryQueue {
@@ -92,6 +93,11 @@ func (q *InMemoryQueue) Close() error {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 
+	if q.closed {  // Prevent double-close
+		return nil
+	}
+	q.closed = true
+
 	for id, req := range q.pending {
 		close(req.resultCh)
 		delete(q.pending, id)
@@ -136,6 +142,14 @@ func (q *InMemoryQueue) handleTimeout(id string) {
 }
 
 func (q *InMemoryQueue) notifyWatchers() {
+
+	q.mu.RLock()
+	defer q.mu.RUnlock()  // Keep lock held during entire operation
+	
+	if q.closed {
+		return
+	}
+
 	select {
 	case q.notifyCh <- struct{}{}:
 	default:
