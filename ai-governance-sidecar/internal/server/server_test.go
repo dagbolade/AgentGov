@@ -10,6 +10,7 @@ import (
 
 	"github.com/dagbolade/ai-governance-sidecar/internal/approval"
 	"github.com/dagbolade/ai-governance-sidecar/internal/audit"
+	"github.com/dagbolade/ai-governance-sidecar/internal/auth"
 	"github.com/dagbolade/ai-governance-sidecar/internal/policy"
 	"github.com/dagbolade/ai-governance-sidecar/internal/proxy"
 )
@@ -72,8 +73,12 @@ func TestHealthEndpoint(t *testing.T) {
 	mockPolicy := &mockPolicyEvaluator{}
 	mockAudit := &mockAuditStore{}
 	mockApproval := &mockApprovalQueue{}
+	mockAuthManager := auth.NewManager(auth.Config{
+		RequireAuth: false,
+		JWTSecret:   "test-secret",
+	})
 
-	srv := New(cfg, mockPolicy, mockAudit, mockApproval)
+	srv := New(cfg, mockPolicy, mockAudit, mockApproval, mockAuthManager)
 
 	req := httptest.NewRequest(http.MethodGet, "/health", nil)
 	rec := httptest.NewRecorder()
@@ -116,8 +121,12 @@ func TestAuditEndpoint(t *testing.T) {
 		},
 	}
 	mockApproval := &mockApprovalQueue{}
+	mockAuthManager := auth.NewManager(auth.Config{
+		RequireAuth: false,
+		JWTSecret:   "test-secret",
+	})
 
-	srv := New(cfg, mockPolicy, mockAudit, mockApproval)
+	srv := New(cfg, mockPolicy, mockAudit, mockApproval, mockAuthManager)
 
 	req := httptest.NewRequest(http.MethodGet, "/audit", nil)
 	rec := httptest.NewRecorder()
@@ -152,8 +161,12 @@ func TestServerShutdown(t *testing.T) {
 	mockPolicy := &mockPolicyEvaluator{}
 	mockAudit := &mockAuditStore{}
 	mockApproval := &mockApprovalQueue{}
+	mockAuthManager := auth.NewManager(auth.Config{
+		RequireAuth: false,
+		JWTSecret:   "test-secret",
+	})
 
-	srv := New(cfg, mockPolicy, mockAudit, mockApproval)
+	srv := New(cfg, mockPolicy, mockAudit, mockApproval, mockAuthManager)
 
 	go func() {
 		srv.Start()

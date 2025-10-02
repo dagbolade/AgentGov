@@ -8,6 +8,7 @@ import (
 
 	"github.com/dagbolade/ai-governance-sidecar/internal/approval"
 	"github.com/dagbolade/ai-governance-sidecar/internal/audit"
+	"github.com/dagbolade/ai-governance-sidecar/internal/auth" 
 	"github.com/dagbolade/ai-governance-sidecar/internal/policy"
 	"github.com/dagbolade/ai-governance-sidecar/internal/proxy"
 	"github.com/labstack/echo/v4"
@@ -28,7 +29,7 @@ type Config struct {
 	ProxyConfig     proxy.ProxyConfig
 }
 
-func New(cfg Config, pol policy.Evaluator, aud audit.Store, appr approval.Queue) *Server {
+func New(cfg Config, pol policy.Evaluator, aud audit.Store, appr approval.Queue, authManager *auth.Manager) *Server {
 	e := echo.New()
 	e.HideBanner = true
 	e.HidePort = true
@@ -39,7 +40,7 @@ func New(cfg Config, pol policy.Evaluator, aud audit.Store, appr approval.Queue)
 	}
 
 	s.setupMiddleware()
-	s.setupRoutes(pol, aud, appr)
+	s.setupRoutes(pol, aud, appr, authManager)
 
 	return s
 }
@@ -93,30 +94,37 @@ func (s *Server) setupMiddleware() {
 	s.echo.Use(middleware.CORSWithConfig(middleware.CORSConfig{
 		AllowOrigins: []string{"*"},
 		AllowMethods: []string{http.MethodGet, http.MethodPost, http.MethodPut, http.MethodDelete},
+		AllowHeaders: []string{"Content-Type", "Authorization"},
+		AllowCredentials: true,
 	}))
 }
 
-func (s *Server) setupRoutes(pol policy.Evaluator, aud audit.Store, appr approval.Queue) {
+func (s *Server) setupRoutes(pol policy.Evaluator, aud audit.Store, appr approval.Queue, authManager *auth.Manager) {
 	proxyHandler := proxy.NewHandler(s.config.ProxyConfig, pol, aud, appr)
 	auditHandler := NewAuditHandler(aud)
 	approvalHandler := NewApprovalHandler(appr)
 	wsHandler := NewWSHandler(appr)
+	authHandler := auth.NewHandler(authManager)
 
-	// Core endpoints
+	// Public endpoints (no auth required)
 	s.echo.GET("/health", s.handleHealth)
-	s.echo.POST("/tool/call", proxyHandler.HandleToolCall)
-	s.echo.GET("/audit", auditHandler.GetAuditLog)
+	s.echo.POST("/login", authHandler.Login) 
 
-	// Approval endpoints
-	s.echo.GET("/pending", approvalHandler.GetPending)
-	s.echo.POST("/approve/:id", approvalHandler.Decide)
-
-	// WebSocket for real-time updates
-	s.echo.GET("/ws", wsHandler.HandleWebSocket)
-
-	// UI routes (Phase 2 - will add static files)
-	s.echo.GET("/ui", s.handleUI)
-	s.echo.GET("/ui/*", s.handleUI)
+	// Apply auth middleware to protected routes
+	protected := s.echo.Group("")
+	protected.Use(authManager.Middleware())
+	
+	// Protected endpoints
+	protected.GET("/me", authHandler.Me)
+	protected.POST("/tool/call", proxyHandler.HandleToolCall)
+	protected.GET("/audit", auditHandler.GetAuditLog)
+	protected.GET("/pending", approvalHandler.GetPending)
+	protected.POST("/approve/:id", approvalHandler.Decide)
+	protected.GET("/ws", wsHandler.HandleWebSocket)
+	
+	// UI routes
+	protected.GET("/ui", s.handleUI)
+	protected.GET("/ui/*", s.handleUI)
 }
 
 func (s *Server) handleHealth(c echo.Context) error {
@@ -140,9 +148,11 @@ func (s *Server) handleUI(c echo.Context) error {
 				<h1>AI Governance Sidecar</h1>
 				<p>UI is being built. For now, use the API endpoints:</p>
 				<ul>
-					<li>GET /pending - View pending approvals</li>
-					<li>POST /approve/:id - Approve/deny requests</li>
-					<li>GET /audit - View audit log</li>
+					<li>POST /login - Login to get JWT token</li>
+					<li>GET /me - Get current user info</li>
+					<li>GET /pending - View pending approvals (auth required)</li>
+					<li>POST /approve/:id - Approve/deny requests (auth required)</li>
+					<li>GET /audit - View audit log (auth required)</li>
 				</ul>
 			</div>
 		</body>

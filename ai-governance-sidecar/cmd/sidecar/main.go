@@ -10,6 +10,7 @@ import (
 
 	"github.com/dagbolade/ai-governance-sidecar/internal/approval"
 	"github.com/dagbolade/ai-governance-sidecar/internal/audit"
+	"github.com/dagbolade/ai-governance-sidecar/internal/auth"
 	"github.com/dagbolade/ai-governance-sidecar/internal/policy"
 	"github.com/dagbolade/ai-governance-sidecar/internal/server"
 	"github.com/rs/zerolog"
@@ -59,10 +60,28 @@ func run(ctx context.Context) error {
 		}
 	}()
 
+	authManager := initAuthManager()
+
 	cfg := server.LoadConfig()
-	srv := server.New(cfg, policyEngine, auditStore, approvalQueue)
+	srv := server.New(cfg, policyEngine, auditStore, approvalQueue, authManager)
 
 	return runServer(ctx, srv)
+}
+
+// Initialize auth manager
+func initAuthManager() *auth.Manager {
+	requireAuth := getEnv("REQUIRE_AUTH", "false") == "true"
+	
+	log.Info().Bool("required", requireAuth).Msg("initializing auth manager")
+	
+	manager := auth.NewManager(auth.Config{
+		JWTSecret:       os.Getenv("JWT_SECRET"),
+		TokenExpiration: 24 * time.Hour,
+		RequireAuth:     requireAuth,
+	})
+	
+	log.Info().Msg("auth manager initialized")
+	return manager
 }
 
 func setupLogger() {
