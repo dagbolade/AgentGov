@@ -63,7 +63,7 @@ func (s *SQLiteStore) initializeSchema() error {
 }
 
 func (s *SQLiteStore) insertEntry(ctx context.Context, toolInput json.RawMessage, decision Decision, reason string) error {
-	const maxRetries = 3
+	const maxRetries = 10
 	var err error
 	
 	for attempt := 0; attempt < maxRetries; attempt++ {
@@ -75,7 +75,10 @@ func (s *SQLiteStore) insertEntry(ctx context.Context, toolInput json.RawMessage
 		// Check if it's a lock error
 		if strings.Contains(err.Error(), "database is locked") || strings.Contains(err.Error(), "SQLITE_BUSY") {
 			// Exponential backoff
-			backoff := time.Duration(attempt+1) * 10 * time.Millisecond
+			backoff := time.Duration(50*(1<<uint(attempt))) * time.Millisecond
+			if backoff > 2*time.Second {
+				backoff = 2 * time.Second // Cap at 2s
+			}
 			time.Sleep(backoff)
 			continue
 		}
