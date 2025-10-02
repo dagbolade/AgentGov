@@ -18,8 +18,8 @@ func openDatabase(dbPath string) (*sql.DB, error) {
 	}
 
 	// Set connection pool limits for concurrent access
-	db.SetMaxOpenConns(25)
-	db.SetMaxIdleConns(5)
+	db.SetMaxOpenConns(1)
+	db.SetMaxIdleConns(1)
 	db.SetConnMaxLifetime(0)
 
 
