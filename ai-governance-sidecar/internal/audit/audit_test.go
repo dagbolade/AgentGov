@@ -119,28 +119,27 @@ func TestConcurrentWrites(t *testing.T) {
 
 	const numWrites = 20
 	errChan := make(chan error, numWrites)
-	doneChan := make(chan struct{})
 
-	// Stagger writes slightly to reduce lock contention
+	// Launch concurrent writes
 	for i := 0; i < numWrites; i++ {
 		go func(id int) {
-			time.Sleep(time.Duration(id) * time.Millisecond)
-			errChan <- store.Log(ctx, toolInput, DecisionAllow, "concurrent test")
+			time.Sleep(time.Duration(id) * time.Millisecond) // Stagger slightly
+			err := store.Log(ctx, toolInput, DecisionAllow, fmt.Sprintf("concurrent test %d", id))
+			errChan <- err
 		}(i)
 	}
 
-	go func() {
-		for i := 0; i < numWrites; i++ {
-			<-errChan
+	// Collect all errors
+	var errors []error
+	for i := 0; i < numWrites; i++ {
+		if err := <-errChan; err != nil {
+			errors = append(errors, err)
 		}
-		close(doneChan)
-	}()
+	}
 
-	select {
-	case <-doneChan:
-		// All writes completed
-	case <-time.After(10 * time.Second):
-		t.Fatal("timeout waiting for concurrent writes")
+	// Report any write failures
+	if len(errors) > 0 {
+		t.Fatalf("writes failed: %v", errors)
 	}
 
 	// Verify all writes succeeded
