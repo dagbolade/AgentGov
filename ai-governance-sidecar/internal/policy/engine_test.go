@@ -59,7 +59,7 @@ func TestEngineReload(t *testing.T) {
 		t.Error("expected error when loading from empty directory")
 	}
 
-	if err.Error() != "no WASM policies found in "+policyDir {
+	if err.Error() != "no valid WASM policies found in directory: "+policyDir {
 		t.Errorf("unexpected error: %v", err)
 	}
 }
