@@ -93,37 +93,27 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: ./ai-governance-sidecar 
-
+        working-directory: ./ai-governance-sidecar
     env:
       CGO_ENABLED: 1
       GOTOOLCHAIN: go1.25.1+auto
-
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-      
-      - name: Set up Go
-        uses: actions/setup-go@v5
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
         with:
           go-version: '1.25.1'
           check-latest: true
-
-      - name: Verify go.mod
-        run: test -f go.mod
-      
-      - name: Download dependencies
-        run: go mod download
-      
-      - name: Run golangci-lint
-        uses: golangci/golangci-lint-action@v4
+      - run: go version && go env | egrep 'GOVERSION|GOTOOLCHAIN|GOOS|GOARCH|CGO_ENABLED'
+      - run: go mod download
+      - uses: golangci/golangci-lint-action@v4
         with:
           version: v1.55.2
-          args: --timeout=5m
-          working-directory: ./ai-governance-sidecar 
+          args: --timeout=5m --build-tags=cgo --verbose --print-issued-lines
+          working-directory: ./ai-governance-sidecar
           skip-cache: false
           skip-pkg-cache: false
           skip-build-cache: false
+
 
   build:
     name: Build Binary
