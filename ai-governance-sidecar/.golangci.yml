@@ -1,6 +1,12 @@
 run:
   timeout: 5m
   tests: true
+  go: "1.25"
+  modules-download-mode: mod
+  build-tags:
+    - cgo
+    # - server
+    # - policy_wasm
 
 linters:
   enable:
