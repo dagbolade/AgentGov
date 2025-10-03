@@ -86,7 +86,7 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: ./ai-governance-sidecar # Set the default for run steps
+        working-directory: ./ai-governance-sidecar
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -98,15 +98,14 @@ jobs:
           cache: true
       
       - name: Tidy dependencies
-        # Use 'go mod tidy' for consistency
         run: go mod tidy
 
       - name: Run golangci-lint
         uses: golangci/golangci-lint-action@v4
         with:
           version: v1.55.2
+          working-directory: ./ai-governance-sidecar
           args: --timeout=5m
-          # Redundant 'working-directory' is removed; the action uses the job's default
           skip-cache: true
           skip-pkg-cache: true
           skip-build-cache: true
