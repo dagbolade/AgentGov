@@ -93,7 +93,7 @@ func (q *InMemoryQueue) Close() error {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 
-	if q.closed {  // Prevent double-close
+	if q.closed { // Prevent double-close
 		return nil
 	}
 	q.closed = true
@@ -145,8 +145,8 @@ func (q *InMemoryQueue) handleTimeout(id string) {
 func (q *InMemoryQueue) notifyWatchers() {
 
 	q.mu.RLock()
-	defer q.mu.RUnlock()  // Keep lock held during entire operation
-	
+	defer q.mu.RUnlock() // Keep lock held during entire operation
+
 	if q.closed {
 		return
 	}

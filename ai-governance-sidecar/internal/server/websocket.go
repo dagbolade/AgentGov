@@ -30,9 +30,9 @@ func NewWSHandler(queue approval.Queue) *WSHandler {
 		queue:   queue,
 		clients: make(map[*websocket.Conn]bool),
 	}
-	
+
 	go handler.watchApprovals()
-	
+
 	return handler
 }
 

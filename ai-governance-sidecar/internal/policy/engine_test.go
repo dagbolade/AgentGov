@@ -48,7 +48,7 @@ func TestEngineEvaluation(t *testing.T) {
 
 func TestEngineReload(t *testing.T) {
 	policyDir := t.TempDir()
-	
+
 	engine := &Engine{
 		evaluators: make(map[string]*WASMEvaluator),
 		loader:     NewWASMLoader(),
@@ -66,17 +66,17 @@ func TestEngineReload(t *testing.T) {
 
 func TestDenyResponse(t *testing.T) {
 	engine := &Engine{}
-	
+
 	resp := engine.denyResponse("test reason")
-	
+
 	if resp.Allow {
 		t.Error("expected Allow to be false")
 	}
-	
+
 	if resp.Reason != "test reason" {
 		t.Errorf("expected reason 'test reason', got '%s'", resp.Reason)
 	}
-	
+
 	if resp.HumanRequired {
 		t.Error("expected HumanRequired to be false")
 	}

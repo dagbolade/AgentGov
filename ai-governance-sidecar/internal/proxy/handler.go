@@ -34,7 +34,7 @@ func NewHandler(cfg ProxyConfig, pol policy.Evaluator, aud audit.Store, appr app
 
 func (h *Handler) HandleToolCall(c echo.Context) error {
 	ctx := c.Request().Context()
-	
+
 	req, err := h.parseRequest(c)
 	if err != nil {
 		return h.errorResponse(c, http.StatusBadRequest, err.Error())

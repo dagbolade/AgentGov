@@ -17,7 +17,7 @@ type Engine struct {
 
 func NewEngine(policyDir string) (*Engine, error) {
 	loader := NewWASMLoader()
-	
+
 	engine := &Engine{
 		loader:     loader,
 		evaluators: make(map[string]*WASMEvaluator),
@@ -128,7 +128,7 @@ func (e *Engine) reloadLocked() error {
 
 func (e *Engine) handlePolicyChange(path string) {
 	log.Info().Str("path", path).Msg("policy change detected")
-	
+
 	e.mu.Lock()
 	defer e.mu.Unlock()
 

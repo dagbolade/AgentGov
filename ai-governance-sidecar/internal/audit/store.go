@@ -23,7 +23,7 @@ func NewSQLiteStore(dbPath string) (*SQLiteStore, error) {
 	}
 
 	store := &SQLiteStore{db: db}
-	
+
 	if err := store.initializeSchema(); err != nil {
 		if closeErr := db.Close(); closeErr != nil {
 			log.Warn().Err(closeErr).Msg("failed to close database after schema initialization error")
@@ -68,13 +68,13 @@ func (s *SQLiteStore) initializeSchema() error {
 func (s *SQLiteStore) insertEntry(ctx context.Context, toolInput json.RawMessage, decision Decision, reason string) error {
 	const maxRetries = 3
 	var err error
-	
+
 	for attempt := 0; attempt < maxRetries; attempt++ {
 		_, err = s.db.ExecContext(ctx, queryInsertEntry, string(toolInput), string(decision), reason)
 		if err == nil {
 			return nil
 		}
-		
+
 		// Check if it's a lock error
 		if strings.Contains(err.Error(), "database is locked") || strings.Contains(err.Error(), "SQLITE_BUSY") {
 			// Exponential backoff
@@ -82,11 +82,11 @@ func (s *SQLiteStore) insertEntry(ctx context.Context, toolInput json.RawMessage
 			time.Sleep(backoff)
 			continue
 		}
-		
+
 		// Non-lock error, fail immediately
 		return fmt.Errorf("insert entry: %w", err)
 	}
-	
+
 	return fmt.Errorf("insert entry after %d retries: %w", maxRetries, err)
 }
 

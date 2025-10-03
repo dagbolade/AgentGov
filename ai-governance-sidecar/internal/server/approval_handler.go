@@ -70,8 +70,8 @@ func (h *ApprovalHandler) Decide(c echo.Context) error {
 	}
 
 	return c.JSON(http.StatusOK, map[string]interface{}{
-		"success": true,
-		"id":      id,
+		"success":  true,
+		"id":       id,
 		"decision": decision,
 	})
 }

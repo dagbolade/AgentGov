@@ -22,7 +22,6 @@ func openDatabase(dbPath string) (*sql.DB, error) {
 	db.SetMaxIdleConns(1)
 	db.SetConnMaxLifetime(0)
 
-
 	if err := db.Ping(); err != nil {
 		db.Close()
 		return nil, fmt.Errorf("ping database at %s: %w", dbPath, err)
@@ -38,12 +37,12 @@ func openDatabase(dbPath string) (*sql.DB, error) {
 
 func configureSQLite(db *sql.DB) error {
 	pragmas := []string{
-		"PRAGMA journal_mode=WAL",           // Write-Ahead Logging for better concurrency
-		"PRAGMA synchronous=NORMAL",         // Balance between safety and performance
-		"PRAGMA busy_timeout=5000",          // Wait 5s on lock before failing
-		"PRAGMA cache_size=-64000",          // 64MB cache
-		"PRAGMA foreign_keys=ON",            // Enable foreign key constraints
-		"PRAGMA temp_store=MEMORY",          // Store temp tables in memory
+		"PRAGMA journal_mode=WAL",   // Write-Ahead Logging for better concurrency
+		"PRAGMA synchronous=NORMAL", // Balance between safety and performance
+		"PRAGMA busy_timeout=5000",  // Wait 5s on lock before failing
+		"PRAGMA cache_size=-64000",  // 64MB cache
+		"PRAGMA foreign_keys=ON",    // Enable foreign key constraints
+		"PRAGMA temp_store=MEMORY",  // Store temp tables in memory
 	}
 
 	for _, pragma := range pragmas {
