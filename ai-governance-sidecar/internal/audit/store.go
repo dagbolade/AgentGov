@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/rs/zerolog/log"
 	_ "modernc.org/sqlite"
 )
 
@@ -18,14 +19,16 @@ type SQLiteStore struct {
 func NewSQLiteStore(dbPath string) (*SQLiteStore, error) {
 	db, err := openDatabase(dbPath)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("open database: %w", err)
 	}
 
 	store := &SQLiteStore{db: db}
 	
 	if err := store.initializeSchema(); err != nil {
-		db.Close()
-		return nil, err
+		if closeErr := db.Close(); closeErr != nil {
+			log.Warn().Err(closeErr).Msg("failed to close database after schema initialization error")
+		}
+		return nil, fmt.Errorf("initialize schema: %w", err)
 	}
 
 	return store, nil

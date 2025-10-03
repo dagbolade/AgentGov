@@ -124,6 +124,7 @@ func (q *InMemoryQueue) waitForDecision(ctx context.Context, id string, resultCh
 		q.handleTimeout(id)
 		return Decision{Approved: false, Reason: "approval timeout"}, nil
 	case <-ctx.Done():
+		log.Warn().Err(ctx.Err()).Str("id", id).Msg("approval request context cancelled")
 		q.handleTimeout(id)
 		return Decision{Approved: false, Reason: "request cancelled"}, ctx.Err()
 	}

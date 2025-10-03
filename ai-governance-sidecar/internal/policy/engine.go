@@ -77,13 +77,14 @@ func (e *Engine) Close() error {
 
 	if e.watcher != nil {
 		if err := e.watcher.Close(); err != nil {
-			return err
+			log.Error().Err(err).Msg("failed to close policy watcher")
+			return fmt.Errorf("close watcher: %w", err)
 		}
 	}
 
-	for _, eval := range e.evaluators {
+	for name, eval := range e.evaluators {
 		if err := eval.Close(); err != nil {
-			log.Warn().Err(err).Msg("failed to close evaluator")
+			log.Warn().Err(err).Str("policy", name).Msg("failed to close evaluator")
 		}
 	}
 
@@ -132,7 +133,8 @@ func (e *Engine) handlePolicyChange(path string) {
 	defer e.mu.Unlock()
 
 	if err := e.reloadLocked(); err != nil {
-		log.Error().Err(err).Msg("failed to reload policies")
+		log.Error().Err(err).Str("path", path).Msg("failed to reload policies after change")
+		// Continue running with existing policies rather than crashing
 	}
 }
 

@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"sync"
 
@@ -83,7 +84,7 @@ func (h *WSHandler) broadcastPending() {
 
 	for client := range h.clients {
 		if err := h.sendPending(client); err != nil {
-			log.Warn().Err(err).Msg("failed to broadcast to client")
+			log.Warn().Err(err).Str("remote_addr", client.RemoteAddr().String()).Msg("failed to broadcast to websocket client")
 		}
 	}
 }
@@ -91,7 +92,8 @@ func (h *WSHandler) broadcastPending() {
 func (h *WSHandler) sendPending(ws *websocket.Conn) error {
 	pending, err := h.queue.GetPending(context.Background())
 	if err != nil {
-		return err
+		log.Error().Err(err).Msg("failed to get pending approvals for websocket")
+		return fmt.Errorf("get pending: %w", err)
 	}
 
 	msg := map[string]interface{}{
@@ -102,10 +104,15 @@ func (h *WSHandler) sendPending(ws *websocket.Conn) error {
 
 	data, err := json.Marshal(msg)
 	if err != nil {
-		return err
+		log.Error().Err(err).Msg("failed to marshal pending approvals")
+		return fmt.Errorf("marshal message: %w", err)
 	}
 
-	return ws.WriteMessage(websocket.TextMessage, data)
+	if err := ws.WriteMessage(websocket.TextMessage, data); err != nil {
+		return fmt.Errorf("write websocket message: %w", err)
+	}
+
+	return nil
 }
 
 func (h *WSHandler) addClient(ws *websocket.Conn) {

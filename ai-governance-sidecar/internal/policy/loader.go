@@ -30,7 +30,7 @@ func NewWASMLoader() *WASMLoader {
 func (l *WASMLoader) LoadFromDir(dir string) (map[string]*WASMEvaluator, error) {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
-		return nil, fmt.Errorf("read directory: %w", err)
+		return nil, fmt.Errorf("read directory %s: %w", dir, err)
 	}
 
 	evaluators := make(map[string]*WASMEvaluator)
@@ -43,7 +43,7 @@ func (l *WASMLoader) LoadFromDir(dir string) (map[string]*WASMEvaluator, error) 
 		path := filepath.Join(dir, entry.Name())
 		eval, err := l.loadFile(path)
 		if err != nil {
-			log.Warn().Err(err).Str("file", entry.Name()).Msg("failed to load policy")
+			log.Warn().Err(err).Str("file", entry.Name()).Str("path", path).Msg("failed to load policy file")
 			continue
 		}
 
@@ -52,7 +52,7 @@ func (l *WASMLoader) LoadFromDir(dir string) (map[string]*WASMEvaluator, error) 
 	}
 
 	if len(evaluators) == 0 {
-		return nil, fmt.Errorf("no WASM policies found in %s", dir)
+		return nil, fmt.Errorf("no valid WASM policies found in directory: %s", dir)
 	}
 
 	return evaluators, nil

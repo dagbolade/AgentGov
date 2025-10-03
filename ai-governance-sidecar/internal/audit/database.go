@@ -9,12 +9,12 @@ import (
 
 func openDatabase(dbPath string) (*sql.DB, error) {
 	if err := ensureDBDirectory(dbPath); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("ensure database directory: %w", err)
 	}
 
 	db, err := sql.Open("sqlite", dbPath)
 	if err != nil {
-		return nil, fmt.Errorf("open database: %w", err)
+		return nil, fmt.Errorf("open database at %s: %w", dbPath, err)
 	}
 
 	// Set connection pool limits for concurrent access
@@ -25,12 +25,12 @@ func openDatabase(dbPath string) (*sql.DB, error) {
 
 	if err := db.Ping(); err != nil {
 		db.Close()
-		return nil, fmt.Errorf("ping database: %w", err)
+		return nil, fmt.Errorf("ping database at %s: %w", dbPath, err)
 	}
 
 	if err := configureSQLite(db); err != nil {
 		db.Close()
-		return nil, err
+		return nil, fmt.Errorf("configure sqlite: %w", err)
 	}
 
 	return db, nil
@@ -48,7 +48,7 @@ func configureSQLite(db *sql.DB) error {
 
 	for _, pragma := range pragmas {
 		if _, err := db.Exec(pragma); err != nil {
-			return fmt.Errorf("execute pragma: %w", err)
+			return fmt.Errorf("execute pragma %q: %w", pragma, err)
 		}
 	}
 
