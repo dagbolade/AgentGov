@@ -116,9 +116,9 @@ jobs:
           version: v1.28.3
           args: --timeout=5m
           working-directory: ./ai-governance-sidecar 
-          skip-cache: false
-          skip-pkg-cache: false
-          skip-build-cache: false
+          skip-cache: true
+          skip-pkg-cache: true
+          skip-build-cache: true
 
   build:
     name: Build Binary
