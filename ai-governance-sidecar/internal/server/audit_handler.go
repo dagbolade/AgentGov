@@ -21,7 +21,7 @@ func (h *AuditHandler) GetAuditLog(c echo.Context) error {
 
 	entries, err := h.store.GetAll(ctx)
 	if err != nil {
-		log.Error().Err(err).Msg("failed to retrieve audit log")
+		log.Error().Err(err).Str("remote_addr", c.Request().RemoteAddr).Msg("failed to retrieve audit log")
 		return c.JSON(http.StatusInternalServerError, map[string]string{
 			"error": "failed to retrieve audit log",
 		})

@@ -9,12 +9,12 @@ import (
 
 func openDatabase(dbPath string) (*sql.DB, error) {
 	if err := ensureDBDirectory(dbPath); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("ensure database directory: %w", err)
 	}
 
 	db, err := sql.Open("sqlite", dbPath)
 	if err != nil {
-		return nil, fmt.Errorf("open database: %w", err)
+		return nil, fmt.Errorf("open database at %s: %w", dbPath, err)
 	}
 
 	// Set connection pool limits for concurrent access
@@ -22,15 +22,14 @@ func openDatabase(dbPath string) (*sql.DB, error) {
 	db.SetMaxIdleConns(1)
 	db.SetConnMaxLifetime(0)
 
-
 	if err := db.Ping(); err != nil {
 		db.Close()
-		return nil, fmt.Errorf("ping database: %w", err)
+		return nil, fmt.Errorf("ping database at %s: %w", dbPath, err)
 	}
 
 	if err := configureSQLite(db); err != nil {
 		db.Close()
-		return nil, err
+		return nil, fmt.Errorf("configure sqlite: %w", err)
 	}
 
 	return db, nil
@@ -38,17 +37,17 @@ func openDatabase(dbPath string) (*sql.DB, error) {
 
 func configureSQLite(db *sql.DB) error {
 	pragmas := []string{
-		"PRAGMA journal_mode=WAL",           // Write-Ahead Logging for better concurrency
-		"PRAGMA synchronous=NORMAL",         // Balance between safety and performance
-		"PRAGMA busy_timeout=5000",          // Wait 5s on lock before failing
-		"PRAGMA cache_size=-64000",          // 64MB cache
-		"PRAGMA foreign_keys=ON",            // Enable foreign key constraints
-		"PRAGMA temp_store=MEMORY",          // Store temp tables in memory
+		"PRAGMA journal_mode=WAL",   // Write-Ahead Logging for better concurrency
+		"PRAGMA synchronous=NORMAL", // Balance between safety and performance
+		"PRAGMA busy_timeout=5000",  // Wait 5s on lock before failing
+		"PRAGMA cache_size=-64000",  // 64MB cache
+		"PRAGMA foreign_keys=ON",    // Enable foreign key constraints
+		"PRAGMA temp_store=MEMORY",  // Store temp tables in memory
 	}
 
 	for _, pragma := range pragmas {
 		if _, err := db.Exec(pragma); err != nil {
-			return fmt.Errorf("execute pragma: %w", err)
+			return fmt.Errorf("execute pragma %q: %w", pragma, err)
 		}
 	}
 

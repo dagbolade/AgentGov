@@ -21,7 +21,7 @@ func (h *ApprovalHandler) GetPending(c echo.Context) error {
 
 	pending, err := h.queue.GetPending(ctx)
 	if err != nil {
-		log.Error().Err(err).Msg("failed to get pending approvals")
+		log.Error().Err(err).Str("remote_addr", c.Request().RemoteAddr).Msg("failed to get pending approvals")
 		return c.JSON(http.StatusInternalServerError, map[string]string{
 			"error": "failed to retrieve pending approvals",
 		})
@@ -44,6 +44,7 @@ func (h *ApprovalHandler) Decide(c echo.Context) error {
 	}
 
 	if err := c.Bind(&req); err != nil {
+		log.Warn().Err(err).Str("id", id).Msg("invalid approval decision request body")
 		return c.JSON(http.StatusBadRequest, map[string]string{
 			"error": "invalid request body",
 		})
@@ -62,15 +63,15 @@ func (h *ApprovalHandler) Decide(c echo.Context) error {
 	}
 
 	if err := h.queue.Decide(ctx, id, decision); err != nil {
-		log.Error().Err(err).Str("id", id).Msg("failed to decide approval")
+		log.Error().Err(err).Str("id", id).Bool("approved", req.Approved).Str("decided_by", req.DecidedBy).Msg("failed to decide approval")
 		return c.JSON(http.StatusNotFound, map[string]string{
 			"error": "approval request not found",
 		})
 	}
 
 	return c.JSON(http.StatusOK, map[string]interface{}{
-		"success": true,
-		"id":      id,
+		"success":  true,
+		"id":       id,
 		"decision": decision,
 	})
 }

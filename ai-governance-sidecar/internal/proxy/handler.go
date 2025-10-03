@@ -34,7 +34,7 @@ func NewHandler(cfg ProxyConfig, pol policy.Evaluator, aud audit.Store, appr app
 
 func (h *Handler) HandleToolCall(c echo.Context) error {
 	ctx := c.Request().Context()
-	
+
 	req, err := h.parseRequest(c)
 	if err != nil {
 		return h.errorResponse(c, http.StatusBadRequest, err.Error())
@@ -42,6 +42,7 @@ func (h *Handler) HandleToolCall(c echo.Context) error {
 
 	decision, err := h.evaluatePolicy(ctx, req)
 	if err != nil {
+		log.Error().Err(err).Str("tool", req.ToolName).Msg("policy evaluation failed")
 		return h.errorResponse(c, http.StatusInternalServerError, "policy evaluation failed")
 	}
 
@@ -101,6 +102,7 @@ func (h *Handler) logAudit(ctx context.Context, req *ToolCallRequest, decision p
 func (h *Handler) handleHumanApproval(ctx context.Context, c echo.Context, req *ToolCallRequest, reason string) error {
 	decision, err := h.approval.Enqueue(ctx, req.ToPolicyRequest(), reason)
 	if err != nil {
+		log.Error().Err(err).Str("tool", req.ToolName).Str("reason", reason).Msg("approval queue enqueue failed")
 		return h.errorResponse(c, http.StatusInternalServerError, "approval queue error")
 	}
 

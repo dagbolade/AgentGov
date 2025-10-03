@@ -36,6 +36,7 @@ type LoginResponse struct {
 func (h *Handler) Login(c echo.Context) error {
 	var req LoginRequest
 	if err := c.Bind(&req); err != nil {
+		log.Warn().Err(err).Str("remote_addr", c.Request().RemoteAddr).Msg("invalid login request body")
 		return c.JSON(http.StatusBadRequest, map[string]string{
 			"error": "Invalid request",
 		})

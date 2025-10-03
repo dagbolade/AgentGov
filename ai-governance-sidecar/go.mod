@@ -1,6 +1,6 @@
 module github.com/dagbolade/ai-governance-sidecar
 
-go 1.25.1
+go 1.24
 
 require (
 	github.com/bytecodealliance/wasmtime-go/v3 v3.0.2
