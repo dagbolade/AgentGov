@@ -13,6 +13,8 @@ jobs:
     defaults:
       run:
         working-directory: ./ai-governance-sidecar
+    env:
+      GOTOOLCHAIN: go1.25.1+auto
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -20,7 +22,8 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.21.5'
+          go-version: '1.25.1'
+          check-latest: true
       
       - name: Verify go.mod
         run: |
@@ -99,7 +102,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.21.5'
+          go-version: '1.25.1'
 
       - name: Verify go.mod
         run: test -f go.mod
@@ -131,7 +134,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.21.5'
+          go-version: '1.25.1'
       
       - name: Build
         run: go build -v -o governance-sidecar ./cmd/sidecar
