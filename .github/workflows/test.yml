@@ -109,6 +109,9 @@ jobs:
       
       - name: Download dependencies
         run: go mod download
+
+      - name: Build packages
+        run: go build ./...
       
       - name: Run golangci-lint
         uses: golangci/golangci-lint-action@v4
