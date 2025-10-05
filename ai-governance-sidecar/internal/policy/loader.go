@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/bytecodealliance/wasmtime-go/v3"
+	wasmtime "github.com/bytecodealliance/wasmtime-go/v3"
 	"github.com/rs/zerolog/log"
 )
 
