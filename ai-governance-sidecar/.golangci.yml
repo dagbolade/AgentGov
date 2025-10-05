@@ -15,8 +15,6 @@ linters:
     - unused
     - gosimple
     - ineffassign
-  disable:
-    - typecheck
 
 linters-settings:
   errcheck:
@@ -28,3 +26,6 @@ issues:
     - path: _test\.go
       linters:
         - errcheck
+    - linters:
+        - typecheck
+      text: ".*"
