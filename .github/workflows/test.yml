@@ -123,6 +123,9 @@ jobs:
       - name: Download dependencies
         run: go mod download
 
+      - name: Build to populate cache
+        run: go build ./...
+
       - name: Prime module graph (no compile)
         run: go list -deps ./... > /dev/null
 
