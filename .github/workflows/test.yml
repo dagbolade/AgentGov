@@ -93,37 +93,51 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: ./ai-governance-sidecar 
-
+        working-directory: ./ai-governance-sidecar
     env:
       CGO_ENABLED: 1
+      GOFLAGS: "-tags=cgo"
+      CC: gcc
       GOTOOLCHAIN: go1.25.1+auto
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-      
+
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
           go-version: '1.25.1'
           check-latest: true
 
-      - name: Verify go.mod
-        run: test -f go.mod
-      
-      - name: Download dependencies
+      - name: Install toolchains for CGO + Wasmtime C API
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y build-essential pkg-config ca-certificates curl gnupg
+          # Add Bytecode Alliance APT repo for libwasmtime-dev
+          sudo install -d -m 0755 /etc/apt/keyrings
+          curl -fsSL https://bytecodealliance.github.io/wasmtime/dev/debian/wasmtime.gpg | sudo gpg --dearmor -o /etc/apt/keyrings/wasmtime.gpg
+          echo "deb [signed-by=/etc/apt/keyrings/wasmtime.gpg] https://bytecodealliance.github.io/wasmtime/dev/debian/ stable main" | sudo tee /etc/apt/sources.list.d/wasmtime.list
+          sudo apt-get update
+          sudo apt-get install -y libwasmtime-dev
+
+      - name: Download modules
         run: go mod download
-      
+
+      - name: Pre-warm build cache (ensures all deps are resolvable under CGO)
+        run: go list -deps ./... > /dev/null
+
       - name: Run golangci-lint
         uses: golangci/golangci-lint-action@v4
         with:
           version: v1.55.2
-          args: --timeout=5m --build-tags=cgo --verbose --print-issued-lines
-          working-directory: ./ai-governance-sidecar 
+          args: --timeout=5m --build-tags=cgo
+          working-directory: ./ai-governance-sidecar
           skip-cache: false
           skip-pkg-cache: false
           skip-build-cache: false
+
 
   build:
     name: Build Binary
