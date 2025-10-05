@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/bytecodealliance/wasmtime-go/v3"
+	wasmtime "github.com/bytecodealliance/wasmtime-go/v3"
 )
 
 type WASMEvaluator struct {
