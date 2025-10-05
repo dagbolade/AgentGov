@@ -146,7 +146,7 @@ jobs:
         with:
           version: v1.55.2
           args: --timeout=5m --build-tags=cgo
-          # working-directory: ./ai-governance-sidecar
+          working-directory: ./ai-governance-sidecar
           # skip-cache: false
           # skip-pkg-cache: false
           # skip-build-cache: false
