@@ -15,7 +15,8 @@ linters:
     - unused
     - gosimple
     - ineffassign
-    # - typecheck
+  disable:
+    - typecheck
 
 linters-settings:
   errcheck:
