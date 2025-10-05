@@ -128,21 +128,6 @@ jobs:
 
       - name: Prime module graph (no compile)
         run: go list -deps ./... > /dev/null
-
-      - name: Debug typecheck lines
-        uses: golangci/golangci-lint-action@v4
-        continue-on-error: true
-        with:
-          version: v1.55.2
-          working-directory: ./ai-governance-sidecar
-          args: >
-            -E typecheck
-            --timeout=5m
-            --build-tags=cgo
-            --print-issued-lines
-            --out-format=colored-line-number
-            --max-same-issues=0
-            --max-issues-per-linter=0
             
       - name: Run golangci-lint
         uses: golangci/golangci-lint-action@v4
