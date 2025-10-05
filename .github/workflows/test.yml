@@ -126,18 +126,13 @@ jobs:
       - name: Build to populate cache
         run: go build ./...
 
-      - name: Prime module graph (no compile)
-        run: go list -deps ./... > /dev/null
-            
+      - name: Install golangci-lint
+        run: |
+          curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin v1.55.2
+          echo "$(go env GOPATH)/bin" >> $GITHUB_PATH
+
       - name: Run golangci-lint
-        uses: golangci/golangci-lint-action@v4
-        with:
-          version: v1.55.2
-          args: --timeout=5m --build-tags=cgo --disable=typecheck
-          working-directory: ./ai-governance-sidecar
-          # skip-cache: false
-          # skip-pkg-cache: false
-          # skip-build-cache: false
+        run: golangci-lint run --timeout=5m --build-tags=cgo
 
 
   build:
