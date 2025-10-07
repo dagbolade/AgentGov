@@ -16,6 +16,7 @@ import (
 // TestPolicyHotReload tests that the policy engine can reload policies
 // without restarting the server
 func TestPolicyHotReload(t *testing.T) {
+	RequireWASMPolicies(t)
 	env := SetupTestEnvironment(t)
 
 	// Try to copy real WASM policies from workspace
@@ -149,6 +150,7 @@ func TestPolicyHotReload(t *testing.T) {
 // TestPolicyReloadConcurrency tests that policy reload doesn't interfere
 // with ongoing policy evaluations
 func TestPolicyReloadConcurrency(t *testing.T) {
+	RequireWASMPolicies(t)
 	env := SetupTestEnvironment(t)
 
 	// Load initial policy
@@ -220,6 +222,7 @@ func TestPolicyReloadConcurrency(t *testing.T) {
 
 // TestPolicyWatcherReload tests the file watcher mechanism
 func TestPolicyWatcherReload(t *testing.T) {
+	RequireWASMPolicies(t)
 	env := SetupTestEnvironment(t)
 
 	// Start with empty policy directory
@@ -249,6 +252,7 @@ func TestPolicyWatcherReload(t *testing.T) {
 
 // TestPolicyReloadErrors tests error handling during policy reload
 func TestPolicyReloadErrors(t *testing.T) {
+	RequireWASMPolicies(t)
 	env := SetupTestEnvironment(t)
 
 	// Load valid policy first
@@ -300,6 +304,7 @@ func TestPolicyReloadErrors(t *testing.T) {
 
 // TestMultiplePolicyInteraction tests how multiple policies interact
 func TestMultiplePolicyInteraction(t *testing.T) {
+	RequireWASMPolicies(t)
 	env := SetupTestEnvironment(t)
 
 	// Load multiple policies

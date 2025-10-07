@@ -81,6 +81,12 @@ jobs:
         chmod +x build.sh
         ./build.sh
     
+    - name: Copy WASM policies to test location
+      run: |
+        mkdir -p wasm
+        cp policies/wasm/*.wasm wasm/ || echo "Warning: No WASM policies found"
+        ls -la wasm/
+    
     - name: Run integration tests
       run: make test-integration
     
@@ -118,10 +124,10 @@ jobs:
         ./build.sh
     
     - name: Build Docker images
-      run: docker-compose build
+      run: docker compose build
     
     - name: Start Docker Compose
-      run: docker-compose up -d
+      run: docker compose up -d
     
     - name: Wait for services
       run: |

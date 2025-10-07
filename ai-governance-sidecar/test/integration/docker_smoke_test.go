@@ -15,8 +15,20 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// getDockerComposeCommand returns the correct docker compose command
+// Tries "docker compose" first (v2), falls back to "docker-compose" (v1)
+func getDockerComposeCommand() []string {
+	// Try docker compose v2
+	cmd := exec.Command("docker", "compose", "version")
+	if err := cmd.Run(); err == nil {
+		return []string{"docker", "compose"}
+	}
+	// Fall back to docker-compose v1
+	return []string{"docker-compose"}
+}
+
 // TestDockerComposeSmoke tests the full Docker Compose deployment
-// This test requires Docker and docker-compose to be installed
+// This test requires Docker and docker compose to be installed
 func TestDockerComposeSmoke(t *testing.T) {
 	if testing.Short() {
 		t.Skip("Skipping Docker Compose test in short mode")
@@ -96,15 +108,19 @@ func getProjectRoot(t *testing.T) string {
 func startDockerCompose(t *testing.T) {
 	t.Helper()
 
+	dockerCmd := getDockerComposeCommand()
+
 	// Build the images first
-	buildCmd := exec.Command("docker-compose", "build")
+	buildArgs := append(dockerCmd, "build")
+	buildCmd := exec.Command(buildArgs[0], buildArgs[1:]...)
 	buildCmd.Stdout = os.Stdout
 	buildCmd.Stderr = os.Stderr
 	err := buildCmd.Run()
 	require.NoError(t, err, "Failed to build Docker images")
 
 	// Start services in detached mode
-	upCmd := exec.Command("docker-compose", "up", "-d")
+	upArgs := append(dockerCmd, "up", "-d")
+	upCmd := exec.Command(upArgs[0], upArgs[1:]...)
 	upCmd.Stdout = os.Stdout
 	upCmd.Stderr = os.Stderr
 	err = upCmd.Run()
@@ -117,7 +133,9 @@ func startDockerCompose(t *testing.T) {
 func stopDockerCompose(t *testing.T) {
 	t.Helper()
 
-	downCmd := exec.Command("docker-compose", "down", "-v")
+	dockerCmd := getDockerComposeCommand()
+	downArgs := append(dockerCmd, "down", "-v")
+	downCmd := exec.Command(downArgs[0], downArgs[1:]...)
 	downCmd.Stdout = os.Stdout
 	downCmd.Stderr = os.Stderr
 	err := downCmd.Run()
@@ -171,13 +189,16 @@ func waitForServicesReady(t *testing.T, timeout time.Duration) {
 	}
 
 	// Log container status for debugging
-	statusCmd := exec.Command("docker-compose", "ps")
+	dockerCmd := getDockerComposeCommand()
+	statusArgs := append(dockerCmd, "ps")
+	statusCmd := exec.Command(statusArgs[0], statusArgs[1:]...)
 	statusCmd.Stdout = os.Stdout
 	statusCmd.Stderr = os.Stderr
 	statusCmd.Run()
 
 	// Log container logs for debugging
-	logsCmd := exec.Command("docker-compose", "logs", "--tail=50")
+	logsArgs := append(dockerCmd, "logs", "--tail=50")
+	logsCmd := exec.Command(logsArgs[0], logsArgs[1:]...)
 	logsCmd.Stdout = os.Stdout
 	logsCmd.Stderr = os.Stderr
 	logsCmd.Run()
@@ -311,7 +332,9 @@ func TestDockerComposeNetworking(t *testing.T) {
 	}
 
 	// Check that containers can communicate
-	cmd := exec.Command("docker-compose", "ps", "-q")
+	dockerCmd := getDockerComposeCommand()
+	psArgs := append(dockerCmd, "ps", "-q")
+	cmd := exec.Command(psArgs[0], psArgs[1:]...)
 	output, err := cmd.Output()
 	if err != nil {
 		t.Skip("Docker Compose not running")
@@ -335,7 +358,9 @@ func TestDockerComposeRestart(t *testing.T) {
 
 	// Restart the backend service
 	t.Log("Restarting backend service...")
-	cmd := exec.Command("docker-compose", "restart", "governance-sidecar")
+	dockerCmd := getDockerComposeCommand()
+	restartArgs := append(dockerCmd, "restart", "governance-sidecar")
+	cmd := exec.Command(restartArgs[0], restartArgs[1:]...)
 	err := cmd.Run()
 	require.NoError(t, err)
 
@@ -356,7 +381,9 @@ func TestDockerComposeLogs(t *testing.T) {
 	}
 
 	// Get logs from backend service
-	cmd := exec.Command("docker-compose", "logs", "--tail=20", "governance-sidecar")
+	dockerCmd := getDockerComposeCommand()
+	logsArgs := append(dockerCmd, "logs", "--tail=20", "governance-sidecar")
+	cmd := exec.Command(logsArgs[0], logsArgs[1:]...)
 	output, err := cmd.Output()
 	require.NoError(t, err)
 
@@ -377,7 +404,9 @@ func TestDockerComposeEnvironmentVariables(t *testing.T) {
 	}
 
 	// Check environment variables in the container
-	cmd := exec.Command("docker-compose", "exec", "-T", "governance-sidecar", "env")
+	dockerCmd := getDockerComposeCommand()
+	execArgs := append(dockerCmd, "exec", "-T", "governance-sidecar", "env")
+	cmd := exec.Command(execArgs[0], execArgs[1:]...)
 	output, err := cmd.Output()
 	if err != nil {
 		t.Skip("Could not exec into container")

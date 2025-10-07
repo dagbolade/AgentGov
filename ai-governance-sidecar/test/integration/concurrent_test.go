@@ -20,6 +20,7 @@ import (
 
 // TestConcurrentRequests tests the system under concurrent load
 func TestConcurrentRequests(t *testing.T) {
+	RequireWASMPolicies(t)
 	env := SetupTestEnvironment(t)
 
 	// Load a simple policy
@@ -146,6 +147,7 @@ func TestConcurrentApprovals(t *testing.T) {
 
 // TestConcurrentPolicyEvaluations tests policy engine under concurrent load
 func TestConcurrentPolicyEvaluations(t *testing.T) {
+	RequireWASMPolicies(t)
 	env := SetupTestEnvironment(t)
 
 	err := env.CopyPolicyFromWorkspace("passthrough")
@@ -326,6 +328,7 @@ func TestHighLoadStability(t *testing.T) {
 		t.Skip("Skipping high load test in short mode")
 	}
 
+	RequireWASMPolicies(t)
 	env := SetupTestEnvironment(t)
 
 	err := env.CopyPolicyFromWorkspace("passthrough")

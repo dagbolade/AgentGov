@@ -215,6 +215,7 @@ func TestApprovalTimeout(t *testing.T) {
 
 // TestApprovalQueueConcurrency tests multiple concurrent approval requests
 func TestApprovalQueueConcurrency(t *testing.T) {
+	RequireWASMPolicies(t)
 	env := SetupTestEnvironment(t)
 
 	err := env.WritePolicy("test_policy.wasm", createMockWASMPolicy(t))

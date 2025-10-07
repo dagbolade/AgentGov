@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -94,6 +95,29 @@ func (e *TestEnvironment) InitializePolicyEngine() error {
 	}
 	e.PolicyEngine = engine
 	return nil
+}
+
+// RequireWASMPolicies checks if valid WASM policies are available and skips test if not
+func RequireWASMPolicies(t *testing.T) {
+	t.Helper()
+	
+	wasmDir := "../../policies/wasm"
+	entries, err := os.ReadDir(wasmDir)
+	if err != nil {
+		t.Skipf("WASM policies not found: %v (build policies first with 'cd policies && ./build.sh')", err)
+	}
+	
+	hasValidWasm := false
+	for _, entry := range entries {
+		if !entry.IsDir() && strings.HasSuffix(strings.ToLower(entry.Name()), ".wasm") {
+			hasValidWasm = true
+			break
+		}
+	}
+	
+	if !hasValidWasm {
+		t.Skip("No WASM policies found (build policies first with 'cd policies && ./build.sh')")
+	}
 }
 
 // StartServer creates and starts the HTTP server
