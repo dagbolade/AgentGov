@@ -394,13 +394,18 @@ func TestHighLoadStability(t *testing.T) {
 	// Wait for in-flight requests to complete
 	time.Sleep(2 * time.Second)
 
+	// Read atomic counters safely
+	finalTotal := atomic.LoadInt32(&totalRequests)
+	finalSuccess := atomic.LoadInt32(&successCount)
+	finalErrors := atomic.LoadInt32(&errorCount)
+
 	t.Logf("High load test completed in %v", elapsed)
-	t.Logf("Total requests: %d", totalRequests)
-	t.Logf("Success: %d (%.1f%%)", successCount, float64(successCount)/float64(totalRequests)*100)
-	t.Logf("Errors: %d (%.1f%%)", errorCount, float64(errorCount)/float64(totalRequests)*100)
+	t.Logf("Total requests: %d", finalTotal)
+	t.Logf("Success: %d (%.1f%%)", finalSuccess, float64(finalSuccess)/float64(finalTotal)*100)
+	t.Logf("Errors: %d (%.1f%%)", finalErrors, float64(finalErrors)/float64(finalTotal)*100)
 
 	// At least 95% success rate under sustained load
-	successRate := float64(successCount) / float64(totalRequests)
+	successRate := float64(finalSuccess) / float64(finalTotal)
 	assert.Greater(t, successRate, 0.95,
 		"Success rate should be above 95%% under sustained load")
 

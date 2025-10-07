@@ -117,6 +117,12 @@ pub extern "C" fn alloc(size: usize) -> *mut u8 {
     ptr
 }
 
+// Go code expects "allocate" not "alloc"
+#[no_mangle]
+pub extern "C" fn allocate(size: usize) -> *mut u8 {
+    alloc(size)
+}
+
 #[no_mangle]
 pub extern "C" fn dealloc(ptr: *mut u8, size: usize) {
     unsafe {
