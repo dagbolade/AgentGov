@@ -47,6 +47,67 @@ impl PolicyResult {
     }
 }
 
+// WASM entry point - evaluate function
+#[no_mangle]
+pub extern "C" fn evaluate(ptr: *const u8, len: usize) -> *mut u8 {
+    use std::slice;
+    use std::str;
+    
+    // Read input from Go runtime
+    let input_bytes = unsafe { slice::from_raw_parts(ptr, len) };
+    let input_str = match str::from_utf8(input_bytes) {
+        Ok(s) => s,
+        Err(_) => return error_result("Invalid UTF-8 input"),
+    };
+    
+    // Parse JSON input
+    let input: PolicyInput = match serde_json::from_str(input_str) {
+        Ok(i) => i,
+        Err(e) => return error_result(&format!("Invalid JSON: {}", e)),
+    };
+    
+    // Default passthrough policy - allow everything
+    let result = PolicyResult {
+        allowed: true,
+        human_required: false,
+        reason: format!(
+            "Policy evaluation: allowing {}.{} request",
+            input.tool, input.action
+        ),
+        confidence: 1.0,
+    };
+    
+    serialize_result_wasm(&result)
+}
+
+fn error_result(message: &str) -> *mut u8 {
+    let result = PolicyResult {
+        allowed: false,
+        human_required: false,
+        reason: message.to_string(),
+        confidence: 1.0,
+    };
+    serialize_result_wasm(&result)
+}
+
+fn serialize_result_wasm(result: &PolicyResult) -> *mut u8 {
+    let json = serde_json::to_string(result).unwrap();
+    let bytes = json.into_bytes();
+    let len = bytes.len();
+    
+    // Allocate memory for length prefix (4 bytes) + JSON data
+    let total_len = 4 + len;
+    let mut buf = Vec::with_capacity(total_len);
+    
+    // Write length as little-endian u32
+    buf.extend_from_slice(&(len as u32).to_le_bytes());
+    buf.extend_from_slice(&bytes);
+    
+    let ptr = buf.as_ptr() as *mut u8;
+    std::mem::forget(buf);
+    ptr
+}
+
 // Memory management functions required for WASM
 #[no_mangle]
 pub extern "C" fn alloc(size: usize) -> *mut u8 {
