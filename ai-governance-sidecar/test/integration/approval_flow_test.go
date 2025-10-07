@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
 	"testing"
 	"time"
 
@@ -27,10 +28,14 @@ func TestApprovalFlowE2E(t *testing.T) {
 
 	// Create a simple allow-all policy for testing
 	// In a real scenario, this would be a policy that requires approval
-	err := env.WritePolicy("test_policy.wasm", createMockWASMPolicy(t))
+	wasmPolicy := createMockWASMPolicy(t)
+	if wasmPolicy == nil {
+		t.Skip("WASM policy not available, skipping")
+	}
+	
+	err := env.WritePolicy("test_policy.wasm", wasmPolicy)
 	if err != nil {
-		// If we can't write WASM, skip this test
-		t.Skip("WASM policy creation not available, skipping")
+		t.Skipf("Failed to write WASM policy: %v", err)
 	}
 
 	require.NoError(t, env.InitializePolicyEngine())
@@ -181,9 +186,14 @@ func TestApprovalTimeout(t *testing.T) {
 	// Use a very short timeout
 	env.ApprovalQueue = approval.NewInMemoryQueue(500 * time.Millisecond)
 
-	err := env.WritePolicy("test_policy.wasm", createMockWASMPolicy(t))
+	wasmPolicy := createMockWASMPolicy(t)
+	if wasmPolicy == nil {
+		t.Skip("WASM policy not available, skipping")
+	}
+	
+	err := env.WritePolicy("test_policy.wasm", wasmPolicy)
 	if err != nil {
-		t.Skip("WASM policy creation not available, skipping")
+		t.Skipf("Failed to write WASM policy: %v", err)
 	}
 
 	require.NoError(t, env.InitializePolicyEngine())
@@ -215,12 +225,16 @@ func TestApprovalTimeout(t *testing.T) {
 
 // TestApprovalQueueConcurrency tests multiple concurrent approval requests
 func TestApprovalQueueConcurrency(t *testing.T) {
-	RequireWASMPolicies(t)
 	env := SetupTestEnvironment(t)
 
-	err := env.WritePolicy("test_policy.wasm", createMockWASMPolicy(t))
+	wasmPolicy := createMockWASMPolicy(t)
+	if wasmPolicy == nil {
+		t.Skip("WASM policy not available, skipping")
+	}
+	
+	err := env.WritePolicy("test_policy.wasm", wasmPolicy)
 	if err != nil {
-		t.Skip("WASM policy creation not available, skipping")
+		t.Skipf("Failed to write WASM policy: %v", err)
 	}
 
 	require.NoError(t, env.InitializePolicyEngine())
@@ -293,10 +307,18 @@ func TestAuditLogIntegrity(t *testing.T) {
 }
 
 // createMockWASMPolicy creates a minimal WASM policy for testing
-// In real tests, you'd use actual compiled WASM policies
+// Copies the real passthrough.wasm policy
 func createMockWASMPolicy(t *testing.T) []byte {
 	t.Helper()
-	// This is a placeholder - in real tests, use actual WASM binaries
-	// For now, return empty bytes to signal that WASM isn't available
-	return []byte{}
+	
+	// Try to read the actual passthrough WASM policy
+	wasmPath := "../../policies/wasm/passthrough.wasm"
+	wasmBytes, err := os.ReadFile(wasmPath)
+	if err != nil {
+		// If we can't read the real WASM file, return nil to signal skip
+		t.Logf("Warning: Could not read WASM policy from %s: %v", wasmPath, err)
+		return nil
+	}
+	
+	return wasmBytes
 }

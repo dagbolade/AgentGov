@@ -152,7 +152,6 @@ func waitForServicesReady(t *testing.T, timeout time.Duration) {
 
 	deadline := time.Now().Add(timeout)
 	backendReady := false
-	uiReady := false
 
 	for time.Now().Before(deadline) {
 		// Check backend health
@@ -163,27 +162,14 @@ func waitForServicesReady(t *testing.T, timeout time.Duration) {
 				if resp.StatusCode == http.StatusOK {
 					backendReady = true
 					t.Log("✓ Backend service is ready")
+					t.Log("All services are ready!")
+					return
 				}
 			}
 		}
 
-		// Check UI
-		if !uiReady {
-			resp, err := http.Get("http://localhost:3000/")
-			if err == nil {
-				defer resp.Body.Close()
-				if resp.StatusCode == http.StatusOK {
-					uiReady = true
-					t.Log("✓ UI service is ready")
-				}
-			}
-		}
-
-		// Both services ready
-		if backendReady && uiReady {
-			t.Log("All services are ready!")
-			return
-		}
+		// Note: UI service is currently commented out in docker-compose.yml
+		// If you enable it, add UI checks here
 
 		time.Sleep(2 * time.Second)
 	}
