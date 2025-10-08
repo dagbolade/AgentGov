@@ -44,36 +44,36 @@ services:
           cpus: '0.5'
           memory: 256M
 
-  # React UI 
-  governance-ui:
-    build:
-      context: ./ui
-      dockerfile: Dockerfile
-    container_name: governance-ui
-    ports:
-      - "3000:80"  # UI accessible at http://localhost:3000
-    depends_on:
-      - governance-sidecar
-    environment:
-      - REACT_APP_API_URL=http://localhost:8080
-      - REACT_APP_WS_URL=ws://localhost:8080/ws
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost/"]
-      interval: 30s
-      timeout: 3s
-      retries: 3
-      start_period: 10s
-    networks:
-      - sidecar-net
-    deploy:
-      resources:
-        limits:
-          cpus: '0.5'
-          memory: 256M
-        reservations:
-          cpus: '0.1'
-          memory: 64M
+  # React UI - Commented out until UI is implemented
+  # governance-ui:
+  #   build:
+  #     context: ./ui
+  #     dockerfile: Dockerfile
+  #   container_name: governance-ui
+  #   ports:
+  #     - "3000:80"  # UI accessible at http://localhost:3000
+  #   depends_on:
+  #     - governance-sidecar
+  #   environment:
+  #     - REACT_APP_API_URL=http://localhost:8080
+  #     - REACT_APP_WS_URL=ws://localhost:8080/ws
+  #   restart: unless-stopped
+  #   healthcheck:
+  #     test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost/"]
+  #     interval: 30s
+  #     timeout: 3s
+  #     retries: 3
+  #     start_period: 10s
+  #   networks:
+  #     - sidecar-net
+  #   deploy:
+  #     resources:
+  #       limits:
+  #         cpus: '0.5'
+  #         memory: 256M
+  #       reservations:
+  #         cpus: '0.1'
+  #         memory: 64M
 
 networks:
   sidecar-net:

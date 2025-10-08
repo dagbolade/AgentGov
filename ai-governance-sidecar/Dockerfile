@@ -1,9 +1,9 @@
-FROM golang:1.21.5-alpine AS builder
+FROM golang:1.25.1-bookworm AS builder
 
 WORKDIR /build
 
 # Install build dependencies
-RUN apk add --no-cache git gcc musl-dev
+RUN apt-get update && apt-get install -y git gcc build-essential && rm -rf /var/lib/apt/lists/*
 
 # Copy go mod files
 COPY go.mod go.sum ./
@@ -15,9 +15,9 @@ COPY . .
 # Build binary with embedded assets
 RUN CGO_ENABLED=1 GOOS=linux go build -ldflags="-s -w" -o governance-sidecar ./cmd/sidecar
 
-FROM alpine:3.19
+FROM debian:bookworm-slim
 
-RUN apk add --no-cache ca-certificates wget
+RUN apt-get update && apt-get install -y ca-certificates wget && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 

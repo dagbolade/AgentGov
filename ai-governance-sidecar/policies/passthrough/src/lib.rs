@@ -21,18 +21,24 @@ struct PolicyResult {
 }
 
 #[no_mangle]
-pub extern "C" fn evaluate(ptr: *const u8, len: usize) -> *mut u8 {
+pub extern "C" fn evaluate(input_ptr: *const u8, input_len: usize, output_ptr: *mut u8, output_len: usize) -> i32 {
     // Read input from Go runtime
-    let input_bytes = unsafe { slice::from_raw_parts(ptr, len) };
+    let input_bytes = unsafe { slice::from_raw_parts(input_ptr, input_len) };
     let input_str = match str::from_utf8(input_bytes) {
         Ok(s) => s,
-        Err(_) => return error_result("Invalid UTF-8 input"),
+        Err(_) => {
+            write_error_output(output_ptr, output_len, "Invalid UTF-8 input");
+            return 1;
+        }
     };
     
     // Parse JSON input (validate it's valid)
     let input: PolicyInput = match serde_json::from_str(input_str) {
         Ok(i) => i,
-        Err(e) => return error_result(&format!("Invalid JSON: {}", e)),
+        Err(e) => {
+            write_error_output(output_ptr, output_len, &format!("Invalid JSON: {}", e));
+            return 1;
+        }
     };
     
     // Passthrough - allow everything
@@ -46,43 +52,43 @@ pub extern "C" fn evaluate(ptr: *const u8, len: usize) -> *mut u8 {
         confidence: 1.0,
     };
     
-    serialize_result(&result)
+    write_result_output(output_ptr, output_len, &result)
 }
 
-fn error_result(message: &str) -> *mut u8 {
+fn write_result_output(output_ptr: *mut u8, output_len: usize, result: &PolicyResult) -> i32 {
+    let json = match serde_json::to_string(result) {
+        Ok(j) => j,
+        Err(e) => {
+            write_error_output(output_ptr, output_len, &format!("Serialization error: {}", e));
+            return 1;
+        }
+    };
+    
+    let bytes = json.as_bytes();
+    let copy_len = bytes.len().min(output_len);
+    
+    unsafe {
+        std::ptr::copy_nonoverlapping(bytes.as_ptr(), output_ptr, copy_len);
+    }
+    
+    0 // Success
+}
+
+fn write_error_output(output_ptr: *mut u8, output_len: usize, message: &str) {
     let result = PolicyResult {
         allowed: false,
         human_required: false,
         reason: message.to_string(),
-        confidence: 1.0,
+        confidence: 0.0,
     };
-    serialize_result(&result)
-}
-
-fn serialize_result(result: &PolicyResult) -> *mut u8 {
-    let json = serde_json::to_string(result).unwrap();
-    let bytes = json.into_bytes();
-    let len = bytes.len();
     
-    // Allocate memory for length prefix (4 bytes) + JSON data
-    let total_len = 4 + len;
-    let mut buf = Vec::with_capacity(total_len);
-    
-    // Write length as little-endian u32
-    buf.extend_from_slice(&(len as u32).to_le_bytes());
-    buf.extend_from_slice(&bytes);
-    
-    let ptr = buf.as_ptr() as *mut u8;
-    std::mem::forget(buf);
-    ptr
+    let _ = write_result_output(output_ptr, output_len, &result);
 }
 
 #[no_mangle]
-pub extern "C" fn alloc(size: usize) -> *mut u8 {
-    let mut buf = Vec::with_capacity(size);
-    let ptr = buf.as_mut_ptr();
-    std::mem::forget(buf);
-    ptr
+pub extern "C" fn allocate(size: usize) -> *mut u8 {
+    let layout = std::alloc::Layout::from_size_align(size, 1).unwrap();
+    unsafe { std::alloc::alloc(layout) }
 }
 
 #[no_mangle]
