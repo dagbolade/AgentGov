@@ -1,0 +1,32 @@
+[
+  {
+    "note": "Test case 1: 9am should be allowed",
+    "input": {"hour": 9},
+    "expected_result": true
+  },
+  {
+    "note": "Test case 2: 2pm should be allowed",
+    "input": {"hour": 14},
+    "expected_result": true
+  },
+  {
+    "note": "Test case 3: 5pm should be allowed",
+    "input": {"hour": 17},
+    "expected_result": true
+  },
+  {
+    "note": "Test case 4: 8am should be denied",
+    "input": {"hour": 8},
+    "expected_result": false
+  },
+  {
+    "note": "Test case 5: 6pm should be denied",
+    "input": {"hour": 18},
+    "expected_result": false
+  },
+  {
+    "note": "Test case 6: Midnight should be denied",
+    "input": {"hour": 0},
+    "expected_result": false
+  }
+]
