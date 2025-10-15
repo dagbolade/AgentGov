@@ -63,6 +63,49 @@ pub extern "C" fn dealloc(ptr: *mut u8, size: usize) {
     }
 }
 
+#[no_mangle]
+pub extern "C" fn evaluate(
+    in_ptr: *const u8,
+    in_len: usize,
+    out_ptr: *mut *mut u8,
+    out_len: *mut usize,
+) -> i32 {
+    // 1) Read input bytes from host
+    let input = unsafe { std::slice::from_raw_parts(in_ptr, in_len) };
+
+    // 2) Parse request and run *minimal* logic (passthrough by default)
+    //    Replace this with your real policy checks as you evolve.
+    let result: PolicyResult = match serde_json::from_slice::<PolicyInput>(input) {
+        Ok(_inp) => {
+            // Example: always allow (passthrough)
+            PolicyResult::allow("passthrough")
+        }
+        Err(e) => PolicyResult::deny(format!("invalid JSON: {e}")),
+    };
+
+    // 3) Serialize to JSON and copy into newly allocated buffer
+    let bytes = match serde_json::to_vec(&result) {
+        Ok(b) => b,
+        Err(e) => {
+            let fallback = PolicyResult::deny(format!("serialization error: {e}"));
+            serde_json::to_vec(&fallback).unwrap()
+        }
+    };
+
+    let len = bytes.len();
+    let ptr = alloc(len);
+    unsafe { std::ptr::copy_nonoverlapping(bytes.as_ptr(), ptr, len); }
+
+    // 4) Return buffer location & length to host
+    unsafe {
+        *out_ptr = ptr;
+        *out_len = len;
+    }
+
+    // 0 = success (non-zero if you want to signal host-level errors)
+    0
+}
+
 // Serialize result to JSON and return pointer
 pub fn serialize_result(result: &PolicyResult) -> *mut u8 {
     let json = serde_json::to_string(result).unwrap_or_else(|e| {
