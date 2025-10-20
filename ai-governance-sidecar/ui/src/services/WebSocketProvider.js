@@ -1,97 +1,129 @@
-import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
+import React, { createContext, useContext, useEffect, useRef, useState, useCallback } from 'react';
+import { useAuth } from '../contexts/AuthContext';
 
 const WebSocketContext = createContext(null);
 
 export const useWebSocket = () => {
-  const context = useContext(WebSocketContext);
-  if (!context) {
-    throw new Error('useWebSocket must be used within WebSocketProvider');
-  }
-  return context;
+  const ctx = useContext(WebSocketContext);
+  if (!ctx) throw new Error('useWebSocket must be used within WebSocketProvider');
+  return ctx;
 };
 
 export const WebSocketProvider = ({ children }) => {
-  const [ws, setWs] = useState(null);
+  const { token } = useAuth();
+
+  const wsRef = useRef(null);
+  const reconnectTimerRef = useRef(null);
+  const tokenRef = useRef(token);
+  const listenersRef = useRef(new Set());
+
   const [isConnected, setIsConnected] = useState(false);
   const [lastMessage, setLastMessage] = useState(null);
-  const [listeners, setListeners] = useState([]);
 
-  const WS_URL = process.env.REACT_APP_WS_URL || 'ws://localhost:8080/ws';
+  useEffect(() => { tokenRef.current = token; }, [token]);
 
-  // Connect to WebSocket
-  const connect = useCallback(() => {
-    try {
-      const websocket = new WebSocket(WS_URL);
+  const API_BASE =
+    process.env.REACT_APP_API_URL ||
+    process.env.REACT_APP_API_BASE_URL ||
+    '/api';
 
-      websocket.onopen = () => {
-        console.log('WebSocket connected');
-        setIsConnected(true);
-      };
+  const WS_BASE =
+    process.env.REACT_APP_WS_URL ||
+    (API_BASE.startsWith('http')
+      ? API_BASE.replace(/^http/, 'ws').replace(/\/$/, '') + '/ws'
+      : '/api/ws');
 
-      websocket.onmessage = (event) => {
-        try {
-          const message = JSON.parse(event.data);
-          console.log('WebSocket message:', message);
-          setLastMessage(message);
-          
-          // Notify all listeners
-          listeners.forEach(listener => listener(message));
-        } catch (error) {
-          console.error('Failed to parse WebSocket message:', error);
-        }
-      };
-
-      websocket.onerror = (error) => {
-        console.error('WebSocket error:', error);
-      };
-
-      websocket.onclose = () => {
-        console.log('WebSocket disconnected');
-        setIsConnected(false);
-        
-        // Attempt to reconnect after 5 seconds
-        setTimeout(() => {
-          console.log('Attempting to reconnect...');
-          connect();
-        }, 5000);
-      };
-
-      setWs(websocket);
-    } catch (error) {
-      console.error('Failed to create WebSocket:', error);
+  const clearReconnect = () => {
+    if (reconnectTimerRef.current) {
+      clearTimeout(reconnectTimerRef.current);
+      reconnectTimerRef.current = null;
     }
-  }, [WS_URL, listeners]);
-
-  // Subscribe to WebSocket messages
-  const subscribe = useCallback((callback) => {
-    setListeners(prev => [...prev, callback]);
-    
-    // Return unsubscribe function
-    return () => {
-      setListeners(prev => prev.filter(listener => listener !== callback));
-    };
-  }, []);
-
-  // Initialize WebSocket connection
-  useEffect(() => {
-    connect();
-
-    // Cleanup on unmount
-    return () => {
-      if (ws) {
-        ws.close();
-      }
-    };
-  }, [connect]);
-
-  const value = {
-    isConnected,
-    lastMessage,
-    subscribe,
   };
 
+  const scheduleReconnect = useCallback(() => {
+    clearReconnect();
+    // 6–10s with jitter to avoid thundering herd
+    const base = 6000;
+    const jitter = Math.floor(Math.random() * 4000);
+    reconnectTimerRef.current = setTimeout(() => {
+      const tok = tokenRef.current;
+      if (!tok) return; // don’t connect without a token
+      // if an existing socket is alive, do nothing
+      if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) return;
+
+      const url = `${WS_BASE}${WS_BASE.includes('?') ? '&' : '?'}token=${encodeURIComponent(tok)}`;
+      try {
+        const ws = new WebSocket(url);
+        wsRef.current = ws;
+
+        ws.onopen = () => {
+          setIsConnected(true);
+        };
+
+        ws.onmessage = (evt) => {
+          try {
+            const msg = JSON.parse(evt.data);
+            setLastMessage(msg);
+            // fan out to subscribers
+            listenersRef.current.forEach((fn) => {
+              try { fn(msg); } catch {}
+            });
+          } catch (e) {
+            // non-JSON frames are ignored
+          }
+        };
+
+        ws.onerror = () => {
+          // errors will be followed by onclose; don’t spam logs
+        };
+
+        ws.onclose = () => {
+          setIsConnected(false);
+          // schedule another reconnect (unless token cleared)
+          scheduleReconnect();
+        };
+      } catch {
+        // on construction failure, try again later
+        scheduleReconnect();
+      }
+    }, base + jitter);
+  }, [WS_BASE]);
+
+  // Connect only when token or WS_BASE changes
+  useEffect(() => {
+    clearReconnect();
+
+    // close any existing socket first
+    if (wsRef.current) {
+      try { wsRef.current.close(); } catch {}
+      wsRef.current = null;
+    }
+
+    if (!token) {
+      setIsConnected(false);
+      return;
+    }
+
+    // initial connect
+    scheduleReconnect();
+
+    return () => {
+      clearReconnect();
+      if (wsRef.current) {
+        try { wsRef.current.close(); } catch {}
+        wsRef.current = null;
+      }
+    };
+  }, [token, WS_BASE, scheduleReconnect]);
+
+  // Subscribe without causing re-renders or reconnects
+  const subscribe = useCallback((fn) => {
+    listenersRef.current.add(fn);
+    return () => listenersRef.current.delete(fn);
+  }, []);
+
   return (
-    <WebSocketContext.Provider value={value}>
+    <WebSocketContext.Provider value={{ isConnected, lastMessage, subscribe }}>
       {children}
     </WebSocketContext.Provider>
   );

@@ -1,104 +1,95 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
-import axios from 'axios';
+import React, { createContext, useContext, useEffect, useState } from 'react';
+import api, { authAPI } from '../services/api';
 
 const AuthContext = createContext(null);
 
 export const useAuth = () => {
-  const context = useContext(AuthContext);
-  if (!context) {
-    throw new Error('useAuth must be used within AuthProvider');
-  }
-  return context;
+  const ctx = useContext(AuthContext);
+  if (!ctx) throw new Error('useAuth must be used within AuthProvider');
+  return ctx;
 };
 
 export const AuthProvider = ({ children }) => {
+  const [token, setToken] = useState(() => localStorage.getItem('auth_token') || '');
   const [user, setUser] = useState(null);
-  const [token, setToken] = useState(localStorage.getItem('auth_token'));
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  // Configure axios with token
+  // Keep axios instance in sync with the token (helps even before interceptor runs)
   useEffect(() => {
     if (token) {
-      axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
       localStorage.setItem('auth_token', token);
+      api.defaults.headers.common.Authorization = `Bearer ${token}`;
     } else {
-      delete axios.defaults.headers.common['Authorization'];
       localStorage.removeItem('auth_token');
+      delete api.defaults.headers.common.Authorization;
     }
   }, [token]);
 
-  // Load user on mount if token exists
+  // On mount (or token change), load current user if we have a token
   useEffect(() => {
-    const loadUser = async () => {
+    const load = async () => {
       if (!token) {
+        setUser(null);
         setLoading(false);
         return;
       }
-
       try {
-        const response = await axios.get('/me');
-        setUser(response.data);
-      } catch (err) {
-        console.error('Failed to load user:', err);
-        // Invalid token, clear it
-        setToken(null);
+        const me = await authAPI.me(); // GET /me with Authorization header
+        setUser(me);
+      } catch (e) {
+        // bad/expired token — clear it
+        setToken('');
         setUser(null);
       } finally {
         setLoading(false);
       }
     };
-
-    loadUser();
+    load();
   }, [token]);
 
-  // Login function
   const login = async (email, password) => {
+    setError(null);
     try {
-      setError(null);
-      const response = await axios.post('/login', { email, password });
-      
-      const { token: newToken, user: userData } = response.data;
-      
+      // POST /login — returns { token, user }
+      const { token: newToken, user: userInfo } = await authAPI.login(email, password);
+
+      // set token first so subsequent calls include it
       setToken(newToken);
-      setUser(userData);
-      
+      setUser(userInfo); // we already have the user; no need to refetch immediately
+
       return { success: true };
-    } catch (err) {
-      const errorMessage = err.response?.data?.error || 'Login failed';
-      setError(errorMessage);
-      return { success: false, error: errorMessage };
+    } catch (e) {
+      const msg = e?.response?.data?.error || 'Login failed';
+      setError(msg);
+      return { success: false, error: msg };
     }
   };
 
-  // Logout function
   const logout = () => {
-    setToken(null);
+    setToken('');
     setUser(null);
     setError(null);
   };
 
-  // Check if user has role
-  const hasRole = (role) => {
-    return user?.roles?.includes(role) || false;
-  };
+  const hasRole = (role) => Boolean(user?.roles?.includes(role));
+  const canApprove = () => hasRole('admin') || hasRole('approver');
 
-  // Check if user can approve
-  const canApprove = () => {
-    return hasRole('admin') || hasRole('approver');
-  };
-
-  const value = {
-    user,
-    token,
-    loading,
-    error,
-    login,
-    logout,
-    hasRole,
-    canApprove,
-    isAuthenticated: !!user,
-  };
-
-  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+  return (
+    <AuthContext.Provider
+      value={{
+        token,
+        user,
+        loading,
+        error,
+        login,
+        logout,
+        hasRole,
+        canApprove,
+        isAuthenticated: !!user,
+      }}
+    >
+      {children}
+    </AuthContext.Provider>
+  );
 };

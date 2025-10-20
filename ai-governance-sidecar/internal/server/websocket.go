@@ -1,10 +1,8 @@
 package server
 
 import (
-	"context"
-	"encoding/json"
 	"net/http"
-	"sync"
+	"time"
 
 	"github.com/dagbolade/ai-governance-sidecar/internal/approval"
 	"github.com/gorilla/websocket"
@@ -12,111 +10,109 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
-var upgrader = websocket.Upgrader{
-	CheckOrigin: func(r *http.Request) bool {
-		return true // Allow all origins in development
-	},
-}
-
 type WSHandler struct {
-	queue   approval.Queue
-	clients map[*websocket.Conn]bool
-	mu      sync.RWMutex
+	queue    approval.Queue
+	upgrader websocket.Upgrader
 }
 
-func NewWSHandler(queue approval.Queue) *WSHandler {
-	handler := &WSHandler{
-		queue:   queue,
-		clients: make(map[*websocket.Conn]bool),
+func NewWSHandler(q approval.Queue) *WSHandler {
+	return &WSHandler{
+		queue: q,
+		upgrader: websocket.Upgrader{
+			// We’re already behind your auth middleware; allow the UI origin.
+			CheckOrigin: func(r *http.Request) bool { return true },
+		},
 	}
-	
-	go handler.watchApprovals()
-	
-	return handler
 }
+
+const (
+	writeWait  = 10 * time.Second
+    pongWait   = 30 * time.Second      // how long we wait for a pong
+    pingPeriod = 10 * time.Second      // send a ping every 10 seconds (must be < pongWait)
+	// maxMessageSize optional; browsers don’t send big frames by default
+	// maxMessageSize = 1 << 20
+)
 
 func (h *WSHandler) HandleWebSocket(c echo.Context) error {
-	ws, err := upgrader.Upgrade(c.Response(), c.Request(), nil)
+	// Upgrade
+	conn, err := h.upgrader.Upgrade(c.Response(), c.Request(), nil)
 	if err != nil {
-		log.Error().Err(err).Msg("websocket upgrade failed")
 		return err
 	}
-	defer ws.Close()
-
-	h.addClient(ws)
-	defer h.removeClient(ws)
-
 	log.Info().Msg("websocket client connected")
+	defer func() {
+		_ = conn.Close()
+		log.Info().Msg("websocket client disconnected")
+	}()
 
-	// Send current pending approvals
-	if err := h.sendPending(ws); err != nil {
-		log.Error().Err(err).Msg("failed to send pending approvals")
-		return err
+	// ---- Keepalive (server-driven ping; extend read deadline on pong) ----
+	// conn.SetReadLimit(maxMessageSize)
+	_ = conn.SetReadDeadline(time.Now().Add(pongWait))
+	conn.SetPongHandler(func(string) error {
+		_ = conn.SetReadDeadline(time.Now().Add(pongWait))
+		return nil
+	})
+
+	// Send initial snapshot so the UI has something immediately
+	if err := h.sendPendingSnapshot(conn, c); err != nil {
+		return nil // client likely gone; don’t spam logs
 	}
 
-	// Keep connection alive and handle client messages
+	// Reader: just drain messages to keep the connection alive (browser pongs automatically)
+	errCh := make(chan error, 1)
+	go func() {
+		for {
+			// We don’t expect client messages; just read to detect close/pong
+			if _, _, err := conn.ReadMessage(); err != nil {
+				errCh <- err
+				return
+			}
+		}
+	}()
+
+	// Writer: periodic pings; you can also push “pending_update” here on your own tick
+	ping := time.NewTicker(pingPeriod)
+	defer ping.Stop()
+
 	for {
-		_, _, err := ws.ReadMessage()
-		if err != nil {
+		select {
+		case <-ping.C:
+			if err := writePing(conn); err != nil {
+				return nil
+			}
+			// OPTIONAL: push periodic snapshot(s) to update the UI
+			// _ = h.sendPendingSnapshot(conn, c)
+
+		case err := <-errCh:
+			// Close 1005 (no status) is normal when timeouts/refreshes happen; don’t error log loudly
 			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
 				log.Error().Err(err).Msg("websocket read error")
 			}
-			break
-		}
-	}
+			return nil
 
-	return nil
-}
-
-func (h *WSHandler) watchApprovals() {
-	if q, ok := h.queue.(*approval.InMemoryQueue); ok {
-		notifyCh := q.NotifyChannel()
-		for range notifyCh {
-			h.broadcastPending()
+		// case <-c.Request().Context().Done():
+		//	return nil
 		}
 	}
 }
 
-func (h *WSHandler) broadcastPending() {
-	h.mu.RLock()
-	defer h.mu.RUnlock()
-
-	for client := range h.clients {
-		if err := h.sendPending(client); err != nil {
-			log.Warn().Err(err).Msg("failed to broadcast to client")
-		}
-	}
-}
-
-func (h *WSHandler) sendPending(ws *websocket.Conn) error {
-	pending, err := h.queue.GetPending(context.Background())
+func (h *WSHandler) sendPendingSnapshot(conn *websocket.Conn, c echo.Context) error {
+	ctx := c.Request().Context()
+	items, err := h.queue.GetPending(ctx)
 	if err != nil {
-		return err
+		log.Warn().Err(err).Msg("failed to load pending approvals for ws snapshot")
+		return nil
 	}
-
-	msg := map[string]interface{}{
+	msg := map[string]any{
 		"type":    "pending_update",
-		"total":   len(pending),
-		"pending": pending,
+		"total":   len(items),
+		"pending": items, // your UI already understands this shape
 	}
-
-	data, err := json.Marshal(msg)
-	if err != nil {
-		return err
-	}
-
-	return ws.WriteMessage(websocket.TextMessage, data)
+	_ = conn.SetWriteDeadline(time.Now().Add(writeWait))
+	return conn.WriteJSON(msg)
 }
 
-func (h *WSHandler) addClient(ws *websocket.Conn) {
-	h.mu.Lock()
-	defer h.mu.Unlock()
-	h.clients[ws] = true
-}
-
-func (h *WSHandler) removeClient(ws *websocket.Conn) {
-	h.mu.Lock()
-	defer h.mu.Unlock()
-	delete(h.clients, ws)
-	log.Info().Msg("websocket client disconnected")
+func writePing(conn *websocket.Conn) error {
+	_ = conn.SetWriteDeadline(time.Now().Add(writeWait))
+	return conn.WriteMessage(websocket.PingMessage, nil)
 }

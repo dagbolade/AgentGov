@@ -49,8 +49,9 @@ func (s *Server) Start() error {
 	addr := fmt.Sprintf(":%d", s.config.Port)
 	log.Info().Int("port", s.config.Port).Msg("starting HTTP server")
 
-	s.echo.Server.ReadTimeout = time.Duration(s.config.ReadTimeout) * time.Second
-	s.echo.Server.WriteTimeout = time.Duration(s.config.WriteTimeout) * time.Second
+	s.echo.Server.ReadTimeout = 0
+	s.echo.Server.WriteTimeout = 0
+	s.echo.Server.IdleTimeout = 120 * time.Second
 
 	if err := s.echo.Start(addr); err != nil && err != http.ErrServerClosed {
 		return fmt.Errorf("server failed: %w", err)
@@ -121,7 +122,11 @@ func (s *Server) setupRoutes(pol policy.Evaluator, aud audit.Store, appr approva
 	protected.GET("/pending", approvalHandler.GetPending)
 	protected.POST("/approve/:id", approvalHandler.Decide)
 	protected.GET("/ws", wsHandler.HandleWebSocket)
-	
+	protected.GET("/approvals/pending", approvalHandler.GetPendingV2)
+	protected.GET("/approvals", approvalHandler.ListApprovals)
+	protected.POST("/approvals/:id/approve", approvalHandler.Approve)
+	protected.POST("/approvals/:id/deny", approvalHandler.Deny)
+		
 	// UI routes
 	protected.GET("/ui", s.handleUI)
 	protected.GET("/ui/*", s.handleUI)

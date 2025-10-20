@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { Lock, Mail, AlertCircle, Eye, EyeOff } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
+import { useNavigate } from 'react-router-dom';
+
 
 const LoginPage = () => {
   const [email, setEmail] = useState('');
@@ -10,6 +12,8 @@ const LoginPage = () => {
   const [error, setError] = useState(null);
   
   const { login } = useAuth();
+  const navigate = useNavigate();
+
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -26,6 +30,8 @@ const LoginPage = () => {
       const result = await login(email, password);
       
       if (!result.success) {
+        navigate('/');
+      } else {
         setError(result.error || 'Login failed');
       }
     } catch (err) {

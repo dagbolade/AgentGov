@@ -3,11 +3,11 @@ import { LogOut, User } from 'lucide-react';
 import ApprovalDashboard from './components/ApprovalDashboard';
 import AuditLog from './components/AuditLog';
 import LoginPage from './components/LoginPage';
-import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { WebSocketProvider } from './services/WebSocketProvider';
+import { AuthProvider, useAuth } from './contexts/AuthContext';
 import './App.css';
 
-function AppContent() {
+function App() {
   const [activeTab, setActiveTab] = useState('approvals');
   const { user, logout, loading, isAuthenticated } = useAuth();
 
@@ -112,14 +112,6 @@ function AppContent() {
         </footer>
       </div>
     </WebSocketProvider>
-  );
-}
-
-function App() {
-  return (
-    <AuthProvider>
-      <AppContent />
-    </AuthProvider>
   );
 }
 

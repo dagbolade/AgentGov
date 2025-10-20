@@ -4,7 +4,7 @@ WORKDIR /src
 
 # deps needed for CGO
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential pkg-config ca-certificates && \
+    build-essential pkg-config ca-certificates git && \
     rm -rf /var/lib/apt/lists/*
 
 # cache modules
@@ -15,9 +15,9 @@ RUN go mod download
 COPY . .
 
 # set target platform
-ARG TARGETOS=linux
-ARG TARGETARCH=arm64
-ENV GOOS=$TARGETOS GOARCH=$TARGETARCH
+# ARG TARGETOS=linux
+# ARG TARGETARCH=arm64
+# ENV GOOS=$TARGETOS GOARCH=$TARGETARCH
 
 # build
 RUN go build -ldflags="-s -w" -o /out/governance-sidecar ./cmd/sidecar
@@ -26,6 +26,6 @@ RUN go build -ldflags="-s -w" -o /out/governance-sidecar ./cmd/sidecar
 #Distroless 
 FROM gcr.io/distroless/cc-debian12:nonroot
 WORKDIR /app
-COPY --from=builder /out/governance-sidecar /app/
+COPY --from=builder /out/governance-sidecar /app/governance-sidecar
 USER nonroot:nonroot
 ENTRYPOINT ["/app/governance-sidecar"]
