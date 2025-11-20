@@ -2,6 +2,7 @@ package server
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -9,6 +10,7 @@ import (
 	"time"
 
 	"github.com/dagbolade/ai-governance-sidecar/internal/approval"
+	"github.com/dagbolade/ai-governance-sidecar/internal/policy"
 	"github.com/labstack/echo/v4"
 	"github.com/stretchr/testify/require"
 )
@@ -21,40 +23,65 @@ type fakeQueue struct {
 		id       string
 		decision approval.Decision
 	}
+	notifyCh chan struct{}
 }
 
-func (f *fakeQueue) Enqueue(_ interface{}, _ approval.Request, _ string) (approval.Decision, error) {
+func newFakeQueue() *fakeQueue {
+	return &fakeQueue{
+		notifyCh: make(chan struct{}, 10),
+	}
+}
+
+func (f *fakeQueue) Enqueue(ctx context.Context, req policy.Request, reason string) (approval.Decision, error) {
 	return approval.Decision{}, nil
 }
-func (f *fakeQueue) GetPending(_ interface{}) ([]approval.Request, error) {
-	// echo.Context passes request.Context(), we don't need it; keep signature with any type to avoid importing context in test
+
+func (f *fakeQueue) GetPending(ctx context.Context) ([]approval.Request, error) {
 	return append([]approval.Request(nil), f.pending...), nil
 }
-func (f *fakeQueue) Decide(_ interface{}, id string, d approval.Decision) error {
+
+func (f *fakeQueue) Decide(ctx context.Context, id string, d approval.Decision) error {
 	f.decided = append(f.decided, struct {
 		id       string
 		decision approval.Decision
 	}{id: id, decision: d})
+	
+	// Notify on decision
+	select {
+	case f.notifyCh <- struct{}{}:
+	default:
+	}
+	
 	return nil
 }
-func (f *fakeQueue) Close() error { return nil }
+
+func (f *fakeQueue) NotifyChannel() <-chan struct{} {
+	return f.notifyCh
+}
+
+func (f *fakeQueue) Close() error {
+	close(f.notifyCh)
+	return nil
+}
 
 // ------- tests -------
 
 func TestGetPendingV2(t *testing.T) {
 	e := echo.New()
-	fq := &fakeQueue{
-		pending: []approval.Request{
-			{
-				ID:        "abc-123",
-				ToolName:  "database",
-				Reason:    "Bulk delete requires approval",
-				CreatedAt: time.Unix(1_700_000_000, 0),
-				Status:    approval.StatusPending,
-			},
+	fq := newFakeQueue()
+	defer fq.Close()
+	
+	fq.pending = []approval.Request{
+		{
+			ID:        "abc-123",
+			ToolName:  "database",
+			Reason:    "Bulk delete requires approval",
+			CreatedAt: time.Unix(1_700_000_000, 0),
+			Status:    approval.StatusPending,
 		},
 	}
-	h := &ApprovalHandler{queue: fq, approvalTimeout: 30 * time.Minute}
+	
+	h := NewApprovalHandler(fq, 30*time.Minute, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/approvals/pending", nil)
 	rec := httptest.NewRecorder()
@@ -77,8 +104,10 @@ func TestGetPendingV2(t *testing.T) {
 
 func TestApproveAndDeny(t *testing.T) {
 	e := echo.New()
-	fq := &fakeQueue{}
-	h := &ApprovalHandler{queue: fq}
+	fq := newFakeQueue()
+	defer fq.Close()
+	
+	h := NewApprovalHandler(fq, 30*time.Minute, nil)
 
 	// approve
 	{

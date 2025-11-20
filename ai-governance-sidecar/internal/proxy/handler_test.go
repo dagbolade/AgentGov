@@ -45,7 +45,15 @@ func (m *mockAuditStore) GetAll(ctx context.Context) ([]audit.Entry, error) {
 
 func (m *mockAuditStore) Close() error { return nil }
 
-type mockApprovalQueue struct{}
+type mockApprovalQueue struct {
+	notifyCh chan struct{}
+}
+
+func newMockApprovalQueue() *mockApprovalQueue {
+	return &mockApprovalQueue{
+		notifyCh: make(chan struct{}, 10),
+	}
+}
 
 func (m *mockApprovalQueue) Enqueue(ctx context.Context, req policy.Request, reason string) (approval.Decision, error) {
 	return approval.Decision{Approved: true, Reason: "mock approved"}, nil
@@ -59,14 +67,24 @@ func (m *mockApprovalQueue) Decide(ctx context.Context, id string, decision appr
 	return nil
 }
 
-func (m *mockApprovalQueue) Close() error { return nil }
+func (m *mockApprovalQueue) NotifyChannel() <-chan struct{} {
+	return m.notifyCh
+}
+
+func (m *mockApprovalQueue) Close() error {
+	if m.notifyCh != nil {
+		close(m.notifyCh)
+	}
+	return nil
+}
 
 func TestHandleToolCall_Success(t *testing.T) {
 	mockPolicy := &mockPolicyEvaluator{
 		response: policy.Response{Allow: true, Reason: "approved"},
 	}
 	mockAudit := &mockAuditStore{}
-	mockApproval := &mockApprovalQueue{}
+	mockApproval := newMockApprovalQueue()
+	defer mockApproval.Close()
 
 	// Mock upstream server
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -117,7 +135,8 @@ func TestHandleToolCall_Denied(t *testing.T) {
 		response: policy.Response{Allow: false, Reason: "blocked by policy"},
 	}
 	mockAudit := &mockAuditStore{}
-	mockApproval := &mockApprovalQueue{}
+	mockApproval := newMockApprovalQueue()
+	defer mockApproval.Close()
 
 	config := ProxyConfig{
 		DefaultUpstream: "http://localhost:9000",
@@ -156,7 +175,8 @@ func TestHandleToolCall_Denied(t *testing.T) {
 func TestHandleToolCall_InvalidRequest(t *testing.T) {
 	mockPolicy := &mockPolicyEvaluator{}
 	mockAudit := &mockAuditStore{}
-	mockApproval := &mockApprovalQueue{}
+	mockApproval := newMockApprovalQueue()
+	defer mockApproval.Close()
 
 	config := ProxyConfig{DefaultUpstream: "http://localhost:9000", Timeout: 10}
 	handler := NewHandler(config, mockPolicy, mockAudit, mockApproval)

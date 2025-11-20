@@ -38,5 +38,6 @@ type Queue interface {
 	Enqueue(ctx context.Context, req policy.Request, reason string) (Decision, error)
 	GetPending(ctx context.Context) ([]Request, error)
 	Decide(ctx context.Context, id string, decision Decision) error
+	NotifyChannel() <-chan struct{} //Added for the WebSocket handler
 	Close() error
 }

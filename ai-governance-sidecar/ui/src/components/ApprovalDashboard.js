@@ -70,20 +70,22 @@ const ApprovalDashboard = () => {
     const unsubscribe = subscribe((message) => {
       console.log('Received WebSocket update:', message);
       
-      // Handle different message types
-      if (message.type === 'approval_update') {
-        if (message.status === 'pending') {
-          // New approval added
-          fetchApprovals();
-        } else if (message.status === 'approved' || message.status === 'denied') {
-          // Approval processed, remove from list
-          setApprovals(prev => prev.filter(a => a.approval_id !== message.approval_id));
-        }
+      // Handle snapshot (initial state or full refresh)
+      if (message.type === 'snapshot' && Array.isArray(message.approvals)) {
+        setApprovals(message.approvals);
+        return;
+      }
+      
+      // Handle decision (approval/denial)
+      if (message.type === 'decision' && message.approval_id) {
+        // Remove the decided approval from the list
+        setApprovals(prev => prev.filter(a => a.approval_id !== message.approval_id));
+        return;
       }
     });
 
     return unsubscribe;
-  }, [subscribe, fetchApprovals]);
+  }, [subscribe]);
 
   if (loading) {
     return (

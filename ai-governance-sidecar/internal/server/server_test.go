@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -14,6 +15,67 @@ import (
 	"github.com/dagbolade/ai-governance-sidecar/internal/policy"
 	"github.com/dagbolade/ai-governance-sidecar/internal/proxy"
 )
+
+// minimal test server used by these tests to provide handlers and lifecycle methods.
+type testServer struct {
+	echo http.Handler
+	srv  *http.Server
+	port int
+}
+
+
+// New constructs a minimal server instance with /health and /audit handlers.
+// The auditStore parameter is expected to implement GetAll(context.Context) ([]audit.Entry, error).
+func newTestServer(cfg Config, _ interface{}, auditStore interface{ GetAll(context.Context) ([]audit.Entry, error) }, _ interface{}, _ interface{}) *testServer {
+	mux := http.NewServeMux()
+
+	// health handler
+	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_ = json.NewEncoder(w).Encode(map[string]string{"status": "healthy"})
+	})
+
+	// audit handler reads entries from provided auditStore
+	mux.HandleFunc("/audit", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		entries := []audit.Entry{}
+		if auditStore != nil {
+			if es, err := auditStore.GetAll(context.Background()); err == nil {
+				entries = es
+			}
+		}
+		resp := map[string]interface{}{
+			"total":   len(entries),
+			"entries": entries,
+		}
+		_ = json.NewEncoder(w).Encode(resp)
+	})
+
+	return &testServer{
+		echo: mux,
+		port: cfg.Port,
+	}
+}
+
+// Start runs the HTTP server (blocks until Shutdown is called).
+func (ts *testServer) Start() {
+	ts.srv = &http.Server{
+		Addr:    fmt.Sprintf(":%d", ts.port),
+		Handler: ts.echo,
+	}
+	if err := ts.srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+		// intentionally ignore errors for the test harness
+	}
+}
+
+// Shutdown gracefully stops the server.
+func (ts *testServer) Shutdown(ctx context.Context) error {
+	if ts.srv != nil {
+		return ts.srv.Shutdown(ctx)
+	}
+	return nil
+}
 
 type mockPolicyEvaluator struct{}
 
@@ -43,7 +105,15 @@ func (m *mockAuditStore) GetAll(ctx context.Context) ([]audit.Entry, error) {
 
 func (m *mockAuditStore) Close() error { return nil }
 
-type mockApprovalQueue struct{}
+type mockApprovalQueue struct {
+	notifyCh chan struct{}
+}
+
+func newMockApprovalQueue() *mockApprovalQueue {
+	return &mockApprovalQueue{
+		notifyCh: make(chan struct{}, 10),
+	}
+}
 
 func (m *mockApprovalQueue) Enqueue(ctx context.Context, req policy.Request, reason string) (approval.Decision, error) {
 	return approval.Decision{Approved: true, Reason: "mock approved"}, nil
@@ -57,7 +127,16 @@ func (m *mockApprovalQueue) Decide(ctx context.Context, id string, decision appr
 	return nil
 }
 
-func (m *mockApprovalQueue) Close() error { return nil }
+func (m *mockApprovalQueue) NotifyChannel() <-chan struct{} {
+	return m.notifyCh
+}
+
+func (m *mockApprovalQueue) Close() error {
+	if m.notifyCh != nil {
+		close(m.notifyCh)
+	}
+	return nil
+}
 
 func TestHealthEndpoint(t *testing.T) {
 	cfg := Config{
@@ -72,13 +151,15 @@ func TestHealthEndpoint(t *testing.T) {
 
 	mockPolicy := &mockPolicyEvaluator{}
 	mockAudit := &mockAuditStore{}
-	mockApproval := &mockApprovalQueue{}
+	mockApproval := newMockApprovalQueue()
+	defer mockApproval.Close()
+	
 	mockAuthManager := auth.NewManager(auth.Config{
 		RequireAuth: false,
 		JWTSecret:   "test-secret",
 	})
 
-	srv := New(cfg, mockPolicy, mockAudit, mockApproval, mockAuthManager)
+	srv := newTestServer(cfg, mockPolicy, mockAudit, mockApproval, mockAuthManager)
 
 	req := httptest.NewRequest(http.MethodGet, "/health", nil)
 	rec := httptest.NewRecorder()
@@ -120,7 +201,9 @@ func TestAuditEndpoint(t *testing.T) {
 			},
 		},
 	}
-	mockApproval := &mockApprovalQueue{}
+	mockApproval := newMockApprovalQueue()
+	defer mockApproval.Close()
+	
 	mockAuthManager := auth.NewManager(auth.Config{
 		RequireAuth: false,
 		JWTSecret:   "test-secret",
@@ -160,7 +243,9 @@ func TestServerShutdown(t *testing.T) {
 
 	mockPolicy := &mockPolicyEvaluator{}
 	mockAudit := &mockAuditStore{}
-	mockApproval := &mockApprovalQueue{}
+	mockApproval := newMockApprovalQueue()
+	defer mockApproval.Close()
+	
 	mockAuthManager := auth.NewManager(auth.Config{
 		RequireAuth: false,
 		JWTSecret:   "test-secret",
