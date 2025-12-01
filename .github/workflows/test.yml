@@ -36,6 +36,18 @@ jobs:
       - name: Tidy dependencies
         run: go mod tidy
       
+      - name: Install Rust (for WASM policies)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      
+      - name: Build WASM policies
+        run: |
+          cd policies
+          chmod +x build.sh
+          ./build.sh
+          ls -lh wasm/
+      
       - name: Run tests with coverage
         run: go test -v -race -coverprofile=coverage.out -covermode=atomic ./...
       

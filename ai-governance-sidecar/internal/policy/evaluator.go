@@ -18,6 +18,8 @@ type WASMEvaluator struct {
 
 func NewWASMEvaluator(engine *wasmtime.Engine, module *wasmtime.Module) (*WASMEvaluator, error) {
 	store := wasmtime.NewStore(engine)
+	// Add fuel to prevent "all fuel consumed" errors
+	store.AddFuel(10000000) // 10 million units should be plenty
 	linker := wasmtime.NewLinker(engine)
 
 	eval := &WASMEvaluator{store: store}

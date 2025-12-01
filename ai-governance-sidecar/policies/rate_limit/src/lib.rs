@@ -1,172 +1,187 @@
-// Real implementation - receives actual input from Go runtime
+// Shared library code for all policies
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::slice;
-use std::str;
 
-#[derive(Deserialize)]
-struct PolicyInput {
-    tool: String,
-    action: String,
-    parameters: Value,
-    context: Value,
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct PolicyInput {
+    pub tool: String,
+    pub action: String,
+    pub parameters: Value,
+    pub context: Value,
 }
 
-#[derive(Serialize)]
-struct PolicyResult {
-    allowed: bool,
-    human_required: bool,
-    reason: String,
-    confidence: f64,
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct PolicyResult {
+    pub allowed: bool,
+    pub human_required: bool,
+    pub reason: String,
+    pub confidence: f64,
 }
 
-const HIGH_VOLUME_THRESHOLD: i64 = 1000;
-const BULK_DELETE_THRESHOLD: i64 = 100;
-const CRITICAL_DELETE_THRESHOLD: i64 = 10; // For critical tables
+impl PolicyResult {
+    pub fn allow(reason: impl Into<String>) -> Self {
+        Self {
+            allowed: true,
+            human_required: false,
+            reason: reason.into(),
+            confidence: 1.0,
+        }
+    }
+    
+    pub fn deny(reason: impl Into<String>) -> Self {
+        Self {
+            allowed: false,
+            human_required: false,
+            reason: reason.into(),
+            confidence: 1.0,
+        }
+    }
+    
+    pub fn require_approval(reason: impl Into<String>, confidence: f64) -> Self {
+        Self {
+            allowed: false,
+            human_required: true,
+            reason: reason.into(),
+            confidence,
+        }
+    }
+}
 
+// WASM entry point - evaluate function
+// Go calls with 4 params: evaluate(inputPtr, inputLen, outputPtr, outputLen) -> i32
 #[no_mangle]
-pub extern "C" fn evaluate(ptr: *const u8, len: usize) -> *mut u8 {
+pub extern "C" fn evaluate(input_ptr: *const u8, input_len: usize, output_ptr: *mut u8, output_len: usize) -> i32 {
+    use std::slice;
+    use std::str;
+    
     // Read input from Go runtime
-    let input_bytes = unsafe { slice::from_raw_parts(ptr, len) };
+    let input_bytes = unsafe { slice::from_raw_parts(input_ptr, input_len) };
     let input_str = match str::from_utf8(input_bytes) {
         Ok(s) => s,
-        Err(_) => return error_result("Invalid UTF-8 input"),
+        Err(_) => {
+            write_error_output(output_ptr, output_len, "Invalid UTF-8 input");
+            return 1;
+        }
     };
     
     // Parse JSON input
     let input: PolicyInput = match serde_json::from_str(input_str) {
         Ok(i) => i,
-        Err(e) => return error_result(&format!("Invalid JSON: {}", e)),
-    };
-    
-    // Check operation type
-    let action_lower = input.action.to_lowercase();
-    let is_bulk = action_lower.contains("bulk") || action_lower.contains("batch");
-    let is_delete = action_lower.contains("delete") || action_lower.contains("remove");
-    let is_update = action_lower.contains("update") || action_lower.contains("modify");
-    
-    // Extract record count from various parameter formats
-    let count = extract_record_count(&input.parameters);
-    let limit = input.parameters.get("limit")
-        .and_then(|v| v.as_i64())
-        .unwrap_or(0);
-    let records_affected = count.max(limit);
-    
-    // Check for critical table operations
-    let table = input.parameters.get("table")
-        .and_then(|v| v.as_str())
-        .unwrap_or("");
-    let is_critical_table = is_critical_table_name(table);
-    
-    // Determine if approval is needed
-    let result = if is_delete && is_critical_table && records_affected >= CRITICAL_DELETE_THRESHOLD {
-        PolicyResult {
-            allowed: false,
-            human_required: true,
-            reason: format!(
-                "Critical: Deleting {} records from critical table '{}'. Human approval required.",
-                records_affected, table
-            ),
-            confidence: 1.0,
-        }
-    } else if is_delete && records_affected >= BULK_DELETE_THRESHOLD {
-        PolicyResult {
-            allowed: false,
-            human_required: true,
-            reason: format!(
-                "Bulk delete of {} records requires approval to prevent accidental data loss.",
-                records_affected
-            ),
-            confidence: 0.95,
-        }
-    } else if (is_bulk || is_update) && records_affected >= HIGH_VOLUME_THRESHOLD {
-        PolicyResult {
-            allowed: false,
-            human_required: true,
-            reason: format!(
-                "High-volume operation affecting {} records. Approval required to ensure intentional execution.",
-                records_affected
-            ),
-            confidence: 0.9,
-        }
-    } else if records_affected > 0 {
-        PolicyResult {
-            allowed: true,
-            human_required: false,
-            reason: format!("Operation within normal limits ({} records).", records_affected),
-            confidence: 1.0,
-        }
-    } else {
-        PolicyResult {
-            allowed: true,
-            human_required: false,
-            reason: "Operation does not specify record count, allowing.".to_string(),
-            confidence: 0.8,
+        Err(e) => {
+            write_error_output(output_ptr, output_len, &format!("Invalid JSON: {}", e));
+            return 1;
         }
     };
     
-    serialize_result(&result)
-}
-
-fn extract_record_count(params: &Value) -> i64 {
-    // Try multiple common parameter names
-    params.get("count")
-        .or_else(|| params.get("rows"))
-        .or_else(|| params.get("records"))
-        .or_else(|| params.get("size"))
-        .and_then(|v| v.as_i64())
-        .unwrap_or(0)
-}
-
-fn is_critical_table_name(table: &str) -> bool {
-    let critical_tables = [
-        "users", "accounts", "payments", "transactions", 
-        "credentials", "auth", "sessions", "audit"
-    ];
+    // Default passthrough policy - allow everything
+    let result = PolicyResult {
+        allowed: true,
+        human_required: false,
+        reason: format!(
+            "Policy evaluation: allowing {}.{} request",
+            input.tool, input.action
+        ),
+        confidence: 1.0,
+    };
     
-    let table_lower = table.to_lowercase();
-    critical_tables.iter().any(|&t| table_lower.contains(t))
+    write_result_output(output_ptr, output_len, &result)
 }
 
-fn error_result(message: &str) -> *mut u8 {
+fn write_result_output(output_ptr: *mut u8, output_len: usize, result: &PolicyResult) -> i32 {
+    let json = match serde_json::to_string(result) {
+        Ok(j) => j,
+        Err(e) => {
+            write_error_output(output_ptr, output_len, &format!("Serialization error: {}", e));
+            return 1;
+        }
+    };
+    
+    let bytes = json.as_bytes();
+    let copy_len = bytes.len().min(output_len);
+    
+    unsafe {
+        std::ptr::copy_nonoverlapping(bytes.as_ptr(), output_ptr, copy_len);
+    }
+    
+    0 // Success
+}
+
+fn write_error_output(output_ptr: *mut u8, output_len: usize, message: &str) {
     let result = PolicyResult {
         allowed: false,
         human_required: false,
         reason: message.to_string(),
-        confidence: 1.0,
+        confidence: 0.0,
     };
-    serialize_result(&result)
+    
+    let _ = write_result_output(output_ptr, output_len, &result);
 }
 
-fn serialize_result(result: &PolicyResult) -> *mut u8 {
-    let json = serde_json::to_string(result).unwrap();
-    let bytes = json.into_bytes();
-    let len = bytes.len();
-    
-    // Allocate memory for length prefix (4 bytes) + JSON data
-    let total_len = 4 + len;
-    let mut buf = Vec::with_capacity(total_len);
-    
-    // Write length as little-endian u32
-    buf.extend_from_slice(&(len as u32).to_le_bytes());
-    buf.extend_from_slice(&bytes);
-    
-    let ptr = buf.as_ptr() as *mut u8;
-    std::mem::forget(buf);
-    ptr
-}
-
+// Memory management functions required for WASM
 #[no_mangle]
-pub extern "C" fn alloc(size: usize) -> *mut u8 {
-    let mut buf = Vec::with_capacity(size);
-    let ptr = buf.as_mut_ptr();
-    std::mem::forget(buf);
-    ptr
+pub extern "C" fn allocate(size: usize) -> *mut u8 {
+    let layout = std::alloc::Layout::from_size_align(size, 1).unwrap();
+    unsafe { std::alloc::alloc(layout) }
 }
 
 #[no_mangle]
 pub extern "C" fn dealloc(ptr: *mut u8, size: usize) {
-    unsafe {
-        let _ = Vec::from_raw_parts(ptr, size, size);
+    if !ptr.is_null() && size > 0 {
+        unsafe {
+            let layout = std::alloc::Layout::from_size_align_unchecked(size, 1);
+            std::alloc::dealloc(ptr, layout);
+        }
+    }
+}
+
+// Serialize result to JSON and return pointer
+pub fn serialize_result(result: &PolicyResult) -> *mut u8 {
+    let json = serde_json::to_string(result).unwrap_or_else(|e| {
+        format!(r#"{{"allowed":false,"human_required":false,"reason":"Serialization error: {}","confidence":0.0}}"#, e)
+    });
+    
+    let bytes = json.into_bytes();
+    let ptr = bytes.as_ptr() as *mut u8;
+    std::mem::forget(bytes);
+    ptr
+}
+
+// Helper to check for sensitive keywords
+pub fn contains_sensitive_keywords(text: &str, keywords: &[&str]) -> Vec<String> {
+    let text_lower = text.to_lowercase();
+    keywords
+        .iter()
+        .filter(|&&keyword| text_lower.contains(keyword))
+        .map(|&s| s.to_string())
+        .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_policy_result_constructors() {
+        let allow = PolicyResult::allow("test");
+        assert!(allow.allowed);
+        assert!(!allow.human_required);
+        
+        let deny = PolicyResult::deny("test");
+        assert!(!deny.allowed);
+        assert!(!deny.human_required);
+        
+        let approval = PolicyResult::require_approval("test", 0.9);
+        assert!(!approval.allowed);
+        assert!(approval.human_required);
+        assert_eq!(approval.confidence, 0.9);
+    }
+    
+    #[test]
+    fn test_sensitive_keywords() {
+        let keywords = vec!["password", "secret", "api_key"];
+        let text = "Please store my password in the database";
+        
+        let found = contains_sensitive_keywords(text, &keywords);
+        assert_eq!(found, vec!["password"]);
     }
 }
