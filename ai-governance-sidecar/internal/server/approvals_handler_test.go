@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/dagbolade/ai-governance-sidecar/internal/approval"
+	"github.com/dagbolade/ai-governance-sidecar/internal/audit"
 	"github.com/dagbolade/ai-governance-sidecar/internal/policy"
 	"github.com/labstack/echo/v4"
 	"github.com/stretchr/testify/require"
@@ -64,12 +65,38 @@ func (f *fakeQueue) Close() error {
 	return nil
 }
 
+// ------- fake audit store for tests -------
+
+type fakeAuditStore struct {
+	logs []audit.Entry
+}
+
+func (f *fakeAuditStore) Log(ctx context.Context, toolInput json.RawMessage, decision audit.Decision, reason string) error {
+	f.logs = append(f.logs, audit.Entry{
+		ToolInput: toolInput,
+		Decision:  decision,
+		Reason:    reason,
+	})
+	return nil
+}
+
+func (f *fakeAuditStore) GetAll(ctx context.Context) ([]audit.Entry, error) {
+	return f.logs, nil
+}
+
+func (f *fakeAuditStore) Close() error {
+	return nil
+}
+
 // ------- tests -------
 
 func TestGetPendingV2(t *testing.T) {
 	e := echo.New()
 	fq := newFakeQueue()
 	defer fq.Close()
+	
+	// Mock audit store
+	fas := &fakeAuditStore{}
 	
 	fq.pending = []approval.Request{
 		{
@@ -81,7 +108,8 @@ func TestGetPendingV2(t *testing.T) {
 		},
 	}
 	
-	h := NewApprovalHandler(fq, 30*time.Minute, nil)
+	// Updated constructor with audit store
+	h := NewApprovalHandler(fq, fas, 30*time.Minute, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/approvals/pending", nil)
 	rec := httptest.NewRecorder()
@@ -107,7 +135,11 @@ func TestApproveAndDeny(t *testing.T) {
 	fq := newFakeQueue()
 	defer fq.Close()
 	
-	h := NewApprovalHandler(fq, 30*time.Minute, nil)
+	// Mock audit store
+	fas := &fakeAuditStore{}
+	
+	// Updated constructor with audit store
+	h := NewApprovalHandler(fq, fas, 30*time.Minute, nil)
 
 	// approve
 	{

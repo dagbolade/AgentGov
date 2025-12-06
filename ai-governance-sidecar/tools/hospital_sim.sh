@@ -2,7 +2,7 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-API_BASE="http://localhost:8080"
+API_BASE="http://localhost:3000/"
 
 # Credentials
 EMAIL="admin@example.com"

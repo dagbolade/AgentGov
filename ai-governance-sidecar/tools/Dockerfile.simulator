@@ -1,0 +1,32 @@
+FROM alpine:3.19
+
+# Install required tools
+RUN apk add --no-cache \
+    bash \
+    curl \
+    jq \
+    ca-certificates
+
+# CHANGE: Copy the NEW automated script instead of the old proxy script
+COPY hospital_sim_automated.sh /usr/local/bin/hospital_sim.sh
+
+# Make it executable
+RUN chmod +x /usr/local/bin/hospital_sim.sh
+
+# Run it
+ENTRYPOINT ["/usr/local/bin/hospital_sim.sh"]
+
+# FROM alpine:3.19
+
+# Install required tools
+# RUN apk add --no-cache \
+#     bash \
+#     curl \
+#     jq \
+#     ca-certificates
+
+# Copy proxy-based simulation script
+# COPY docker_sim_proxy.sh /usr/local/bin/hospital_sim.sh
+# RUN chmod +x /usr/local/bin/hospital_sim.sh
+
+# ENTRYPOINT ["/usr/local/bin/hospital_sim.sh"]

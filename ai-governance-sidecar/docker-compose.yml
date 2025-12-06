@@ -6,6 +6,7 @@ services:
       context: .
       dockerfile: Dockerfile
     container_name: ai-governance-sidecar
+    user: "0:0"
     ports:
       - "8080:8080"  # HTTP API
       - "8081:8081"  # gRPC (optional)
@@ -32,7 +33,7 @@ services:
       interval: 10s
       timeout: 3s
       retries: 3
-      start_period: 5s
+      start_period: 60s
     networks:
       - sidecar-net
     # Optional: Adding resource limits for production
@@ -56,8 +57,8 @@ services:
     depends_on:
       - governance-sidecar
     environment:
-      - REACT_APP_API_URL=http://localhost:8080
-      - REACT_APP_WS_URL=ws://localhost:8080/ws
+      - REACT_APP_API_URL=""
+      - REACT_APP_WS_URL=""
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/healthz"]
@@ -75,6 +76,29 @@ services:
         reservations:
           cpus: '0.1'
           memory: 64M
+
+  # Automated simulation runner (runs once and exits)
+  hospital-simulator:
+    build:
+      context: ./tools
+      dockerfile: Dockerfile.simulator
+    container_name: hospital-simulator
+    depends_on:
+      - governance-sidecar
+      - governance-ui
+    environment:
+      - API_BASE=http://governance-sidecar:8080
+      - ADMIN_EMAIL=admin@example.com
+      - ADMIN_PASSWORD=admin
+      - APPROVER_NAME=Automated System
+      - STARTUP_DELAY=40
+      - SIMULATION_DELAY=40
+    networks:
+      - sidecar-net
+    restart: "no"  # Run once and exit
+    profiles:
+      - simulation  # Only runs when explicitly requested
+
 
 networks:
   sidecar-net:

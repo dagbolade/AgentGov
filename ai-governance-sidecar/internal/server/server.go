@@ -138,7 +138,8 @@ func (s *Server) setupRoutes(pol policy.Evaluator, aud audit.Store, appr approva
 	// Initialize handlers
 	proxyHandler := proxy.NewHandler(s.config.ProxyConfig, pol, aud, appr)
 	auditHandler := NewAuditHandler(aud)
-	approvalHandler := NewApprovalHandler(appr, s.config.ApprovalTimeout, s.wsHub)
+	approvalHandler := NewApprovalHandler(appr, aud, s.config.ApprovalTimeout, s.wsHub)
+	simulationHandler := NewSimulationHandler(appr, s.wsHub)
 	authHandler := auth.NewHandler(authManager)
 
 	// Public endpoints (no auth required)
@@ -167,6 +168,7 @@ func (s *Server) setupRoutes(pol policy.Evaluator, aud audit.Store, appr approva
 	protected.GET("/approvals/pending", approvalHandler.GetPendingV2)
 	protected.POST("/approvals/:id/approve", approvalHandler.Approve)
 	protected.POST("/approvals/:id/deny", approvalHandler.Deny)
+	protected.POST("/simulate/enqueue", simulationHandler.Enqueue)
 
 	// WebSocket endpoint
 	protected.GET("/ws", wsHandler.HandleWebSocket)

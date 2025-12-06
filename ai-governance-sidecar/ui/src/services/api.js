@@ -19,7 +19,7 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
-// Log API errors (you already had this)
+// Log API errors
 api.interceptors.response.use(
   (res) => res,
   (err) => {
@@ -30,12 +30,12 @@ api.interceptors.response.use(
 
 export const authAPI = {
   login: async (email, password) => {
-    // send both keys to cover servers that expect username
     const { data } = await api.post('/login', { email, username: email, password });
     return data; // { token, user }
   },
   me: async () => {
-    const { data } = await api.get('/me');
+    // Add cache buster to ensure fresh user data
+    const { data } = await api.get('/me', { params: { _t: Date.now() } });
     return data; // current user
   },
 };
@@ -43,13 +43,24 @@ export const authAPI = {
 export const approvalAPI = {
   getPending: async () => {
     try {
-      const { data } = await api.get('/approvals', { params: { status: 'pending' } });
+      // FIX: Add timestamp (_t) to prevent browser caching
+      const { data } = await api.get('/approvals', { 
+        params: { 
+          status: 'pending',
+          _t: Date.now() 
+        } 
+      });
       return data;
     } catch (err) {
       if (err.response?.status === 404) {
-        // API doesn’t expose /approvals/pending; try query or return empty
+        // Fallback for some proxies
         try {
-          const { data } = await api.get('/approvals', { params: { status: 'pending' } });
+          const { data } = await api.get('/approvals', { 
+            params: { 
+              status: 'pending',
+              _t: Date.now() 
+            } 
+          });
           return data;
         } catch (e2) {
           if (e2.response?.status === 404) return [];
@@ -71,7 +82,11 @@ export const auditAPI = {
   // Get audit log entries
   getAuditLog: async (limit = 50, offset = 0) => {
     const response = await api.get('/audit', {
-      params: { limit, offset },
+      params: { 
+        limit, 
+        offset,
+        _t: Date.now() // Prevent caching for audit log too
+      },
     });
     return response.data;
   },
@@ -80,7 +95,7 @@ export const auditAPI = {
 export const healthAPI = {
   // Check system health
   getHealth: async () => {
-    const response = await api.get('/health');
+    const response = await api.get('/health', { params: { _t: Date.now() } });
     return response.data;
   },
 };

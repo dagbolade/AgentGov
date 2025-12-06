@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { RefreshCw, AlertCircle, CheckCircle } from 'lucide-react';
+import { RefreshCw, CheckCircle, Activity, AlertCircle } from 'lucide-react';
 import { approvalAPI } from '../services/api';
 import { useWebSocket } from '../services/WebSocketProvider';
 import ApprovalCard from './ApprovalCard';
@@ -9,17 +9,26 @@ const ApprovalDashboard = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [lastUpdated, setLastUpdated] = useState(new Date());
+  
+  // 1. Get WebSocket connection
   const { isConnected, subscribe } = useWebSocket();
 
   // Fetch pending approvals
-  const fetchApprovals = useCallback(async () => {
+  const fetchApprovals = useCallback(async (isAutoRefresh = false) => {
     try {
-      setError(null);
+      // Don't clear error if just background refreshing
+      if (!isAutoRefresh) setError(null);
+      
       const data = await approvalAPI.getPending();
+      
+      // Update state
       setApprovals(data.approvals || []);
+      setLastUpdated(new Date());
+      
     } catch (err) {
       console.error('Failed to fetch approvals:', err);
-      setError('Failed to load pending approvals. Please try again.');
+      if (!isAutoRefresh) setError('Failed to load pending approvals.');
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -32,31 +41,25 @@ const ApprovalDashboard = () => {
     fetchApprovals();
   };
 
-  // Handle approve action
+  // Handle approve action (Optimistic UI)
   const handleApprove = async (approvalId, approver, comment) => {
     try {
-      await approvalAPI.approve(approvalId, approver, comment);
-      // Remove from list immediately (optimistic update)
       setApprovals(prev => prev.filter(a => a.approval_id !== approvalId));
+      await approvalAPI.approve(approvalId, approver, comment);
     } catch (err) {
       console.error('Failed to approve:', err);
-      alert('Failed to approve request. Please try again.');
-      // Refresh to get current state
-      fetchApprovals();
+      fetchApprovals(); // Revert on error
     }
   };
 
-  // Handle deny action
+  // Handle deny action (Optimistic UI)
   const handleDeny = async (approvalId, approver, comment) => {
     try {
-      await approvalAPI.deny(approvalId, approver, comment);
-      // Remove from list immediately (optimistic update)
       setApprovals(prev => prev.filter(a => a.approval_id !== approvalId));
+      await approvalAPI.deny(approvalId, approver, comment);
     } catch (err) {
       console.error('Failed to deny:', err);
-      alert('Failed to deny request. Please try again.');
-      // Refresh to get current state
-      fetchApprovals();
+      fetchApprovals(); // Revert on error
     }
   };
 
@@ -65,29 +68,31 @@ const ApprovalDashboard = () => {
     fetchApprovals();
   }, [fetchApprovals]);
 
-  // Subscribe to WebSocket updates
+  // 2. REAL-TIME LISTENER (PUSH)
   useEffect(() => {
     const unsubscribe = subscribe((message) => {
-      console.log('Received WebSocket update:', message);
-      
-      // Handle snapshot (initial state or full refresh)
-      if (message.type === 'snapshot' && Array.isArray(message.approvals)) {
-        setApprovals(message.approvals);
-        return;
-      }
-      
-      // Handle decision (approval/denial)
-      if (message.type === 'decision' && message.approval_id) {
-        // Remove the decided approval from the list
-        setApprovals(prev => prev.filter(a => a.approval_id !== message.approval_id));
-        return;
+      // If ANY approval update happens, refresh the list immediately
+      if (message.type === 'approval_update') {
+        console.log('WS Update received, refreshing list...');
+        fetchApprovals(true);
       }
     });
-
     return unsubscribe;
-  }, [subscribe]);
+  }, [subscribe, fetchApprovals]);
 
-  if (loading) {
+  // 3. FAIL-SAFE HEARTBEAT (PULL)
+  // Polls every 5 seconds to ensure UI never drifts from reality
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (isConnected) {
+        fetchApprovals(true);
+      }
+    }, 5000); 
+
+    return () => clearInterval(interval);
+  }, [isConnected, fetchApprovals]);
+
+  if (loading && approvals.length === 0) {
     return (
       <div className="flex items-center justify-center h-64">
         <div className="text-center">
@@ -104,30 +109,30 @@ const ApprovalDashboard = () => {
       <div className="bg-white rounded-lg shadow p-6">
         <div className="flex items-center justify-between">
           <div>
-            <h2 className="text-2xl font-bold text-gray-900">
-              Pending Approvals
-            </h2>
+            <div className="flex items-center space-x-3">
+              <h2 className="text-2xl font-bold text-gray-900">
+                Pending Approvals
+              </h2>
+              {/* Live Status Indicator */}
+              {isConnected ? (
+                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800 animate-pulse">
+                  <Activity className="w-3 h-3 mr-1" />
+                  Live
+                </span>
+              ) : (
+                 <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600">
+                  Offline
+                </span>
+              )}
+            </div>
             <p className="text-sm text-gray-500 mt-1">
               {approvals.length} request{approvals.length !== 1 ? 's' : ''} awaiting review
+              <span className="text-xs text-gray-400 ml-2">
+                (Last sync: {lastUpdated.toLocaleTimeString()})
+              </span>
             </p>
           </div>
           <div className="flex items-center space-x-4">
-            {/* WebSocket status */}
-            <div className="flex items-center space-x-2">
-              {isConnected ? (
-                <>
-                  <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
-                  <span className="text-sm text-gray-600">Live</span>
-                </>
-              ) : (
-                <>
-                  <div className="w-2 h-2 bg-red-500 rounded-full" />
-                  <span className="text-sm text-gray-600">Disconnected</span>
-                </>
-              )}
-            </div>
-            
-            {/* Refresh button */}
             <button
               onClick={handleRefresh}
               disabled={refreshing}

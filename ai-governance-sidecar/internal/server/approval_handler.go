@@ -6,20 +6,23 @@ import (
 	"time"
 
 	"github.com/dagbolade/ai-governance-sidecar/internal/approval"
+	"github.com/dagbolade/ai-governance-sidecar/internal/audit" // New
 	"github.com/labstack/echo/v4"
 	"github.com/rs/zerolog/log"
 )
 
 type ApprovalHandler struct {
 	queue           approval.Queue
+	audit           audit.Store // New
 	approvalTimeout time.Duration
 	wsHub           *Hub // Reference to broadcast decisions
 }
 
 // NewApprovalHandler creates approval handler with timeout
-func NewApprovalHandler(queue approval.Queue, timeout time.Duration, wsHub *Hub) *ApprovalHandler {
+func NewApprovalHandler(queue approval.Queue, audit audit.Store, timeout time.Duration, wsHub *Hub) *ApprovalHandler {
 	return &ApprovalHandler{
 		queue:           queue,
+		audit:           audit, // New
 		approvalTimeout: timeout,
 		wsHub:           wsHub,
 	}
@@ -176,6 +179,26 @@ func (h *ApprovalHandler) decideV2(c echo.Context, approved bool) error {
 		})
 	}
 
+	// 1. CAPTURE DATA FOR AUDIT LOG (Before it's removed from queue)
+	var toolName string
+	var toolArgs []byte
+	
+	// Scan pending to find the request details
+	pending, _ := h.queue.GetPending(ctx)
+	for _, p := range pending {
+		if p.ID == id {
+			toolName = p.ToolName
+			toolArgs = p.Args
+			break
+		}
+	}
+
+	// Fallback if empty (shouldn't happen, but good for safety)
+    if toolName == "" {
+        toolName = "manual_approval"
+        toolArgs = []byte("{}")
+    }
+
 	// Create decision
 	decision := approval.Decision{
 		Approved:  approved,
@@ -189,6 +212,27 @@ func (h *ApprovalHandler) decideV2(c echo.Context, approved bool) error {
 		return c.JSON(http.StatusNotFound, map[string]string{
 			"error": "approval request not found or already processed",
 		})
+	}
+
+	// 3. WRITE TO AUDIT LOG
+	if h.audit != nil && toolName != "" {
+		// Construct audit payload
+		auditPayload := map[string]interface{}{
+			"tool_name": toolName,
+			"args":      json.RawMessage(toolArgs),
+		}
+		payloadBytes, _ := json.Marshal(auditPayload)
+		
+		// Map decision to audit type
+		auditDec := audit.DecisionDeny
+		if approved {
+			auditDec = audit.DecisionAllow // Using Allowed/Denied enum
+		}
+		
+		// Log it
+		if err := h.audit.Log(ctx, payloadBytes, auditDec, req.Comment); err != nil {
+			log.Error().Err(err).Msg("failed to write to audit log")
+		}
 	}
 
 	// Broadcast decision via WebSocket
